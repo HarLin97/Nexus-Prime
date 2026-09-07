@@ -1969,6 +1969,7 @@ watch(
         </div>
         <KeyMappingStage
           :config="config"
+          :saving="configStore.saving"
           @save="(cfg) => configStore.saveConfig(type, cfg)"
         />
       </section>

@@ -11,7 +11,7 @@
 
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -236,6 +236,7 @@ impl CaptureEngine {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShortcutCapturedPayload {
+    pub session_id: u64,
     pub keys: Vec<u32>,
     pub labels: Vec<String>,
 }
@@ -243,6 +244,7 @@ pub struct ShortcutCapturedPayload {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShortcutCaptureProgress {
+    pub session_id: u64,
     pub labels: Vec<String>,
 }
 
@@ -252,6 +254,7 @@ struct CaptureRuntime {
     pending: Mutex<Option<ShortcutCapturedPayload>>,
     progress: Mutex<Vec<String>>,
     app: Mutex<Option<AppHandle>>,
+    session_id: AtomicU64,
 }
 
 impl CaptureRuntime {
@@ -262,18 +265,20 @@ impl CaptureRuntime {
             pending: Mutex::new(None),
             progress: Mutex::new(Vec::new()),
             app: Mutex::new(None),
+            session_id: AtomicU64::new(0),
         }
     }
 
     fn publish_progress(&self, labels: Vec<String>) {
         *self.progress.lock().unwrap() = labels.clone();
         let app = self.app.lock().unwrap().clone();
+        let session_id = self.session_id.load(Ordering::Acquire);
         if let Some(app) = app {
             // 勿在 LL 回调线程同步 emit
             thread::spawn(move || {
                 let _ = app.emit(
                     "shortcut-capture-progress",
-                    ShortcutCaptureProgress { labels },
+                    ShortcutCaptureProgress { session_id, labels },
                 );
             });
         }
@@ -287,6 +292,7 @@ impl CaptureRuntime {
         let labels: Vec<String> = keys.iter().copied().map(vk_to_label).collect();
         log::info!("Shortcut captured: {}", labels.join("+"));
         let payload = ShortcutCapturedPayload {
+            session_id: self.session_id.load(Ordering::Acquire),
             keys,
             labels: labels.clone(),
         };
@@ -302,8 +308,13 @@ impl CaptureRuntime {
         }
     }
 
-    fn take_pending(&self) -> Option<ShortcutCapturedPayload> {
-        self.pending.lock().unwrap().take()
+    fn take_pending(&self, session_id: u64) -> Option<ShortcutCapturedPayload> {
+        let mut pending = self.pending.lock().unwrap();
+        if pending.as_ref().is_some_and(|payload| payload.session_id == session_id) {
+            pending.take()
+        } else {
+            None
+        }
     }
 }
 
@@ -447,7 +458,12 @@ impl ShortcutCaptureSession {
         }
     }
 
-    pub fn cancel(&self) -> Result<(), String> {
+    pub fn cancel(&self, session_id: Option<u64>) -> Result<(), String> {
+        let current = self.runtime.session_id.load(Ordering::Acquire);
+        if session_id.is_some_and(|id| id != current) {
+            log::info!("Shortcut capture ignored stale cancel session_id={:?} current={current}", session_id);
+            return Ok(());
+        }
         self.runtime.stop.store(true, Ordering::SeqCst);
         self.runtime.capturing.store(false, Ordering::SeqCst);
 
@@ -457,8 +473,9 @@ impl ShortcutCaptureSession {
         Ok(())
     }
 
-    pub fn start(&self, app: AppHandle) -> Result<(), String> {
-        self.cancel()?;
+    pub fn start(&self, app: AppHandle) -> Result<u64, String> {
+        self.cancel(None)?;
+        let session_id = self.runtime.session_id.fetch_add(1, Ordering::AcqRel) + 1;
 
         *self.runtime.app.lock().unwrap() = Some(app);
         *self.runtime.pending.lock().unwrap() = None;
@@ -489,12 +506,12 @@ impl ShortcutCaptureSession {
 
         SWALLOW_HIT_LOGGED.store(false, Ordering::SeqCst);
         set_swallow_active(true);
-        log::info!("Shortcut capture started (special_keys detect+swallow)");
-        Ok(())
+        log::info!("Shortcut capture started session_id={session_id} (special_keys detect+swallow)");
+        Ok(session_id)
     }
 
-    pub fn take_result(&self) -> Option<ShortcutCapturedPayload> {
-        self.runtime.take_pending()
+    pub fn take_result(&self, session_id: u64) -> Option<ShortcutCapturedPayload> {
+        self.runtime.take_pending(session_id)
     }
 
     pub fn is_active(&self) -> bool {
@@ -510,7 +527,7 @@ impl Default for ShortcutCaptureSession {
 
 impl Drop for ShortcutCaptureSession {
     fn drop(&mut self) {
-        let _ = self.cancel();
+        let _ = self.cancel(None);
     }
 }
 

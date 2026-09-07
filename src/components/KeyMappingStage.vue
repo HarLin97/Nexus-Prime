@@ -25,6 +25,7 @@ const { t, locale } = useI18n();
 
 const props = defineProps<{
   config: DeviceConfig;
+  saving?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -71,6 +72,7 @@ const searchQuery = ref("");
 const capturing = ref(false);
 const captureError = ref<string | null>(null);
 const liveLabels = ref<string[]>([]);
+const captureSessionId = ref<number | null>(null);
 type ClickCount = 1 | 2 | 3 | 4;
 type MappingSlot = ClickCount | "long";
 const MAPPING_SLOTS: MappingSlot[] = [1, 2, 3, 4, "long"];
@@ -87,6 +89,14 @@ const manualEditor = ref<{
   slot: MappingSlot;
   initialKeys: number[];
 } | null>(null);
+const resetting = ref(false);
+const resetStatus = ref<string | null>(null);
+const resetError = ref<string | null>(null);
+const showResetTip = ref(false);
+const resetInfoBtn = ref<HTMLElement | null>(null);
+const resetTipEl = ref<HTMLElement | null>(null);
+const resetTipStyle = ref<Record<string, string>>({});
+let resetTipCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 const stageRef = ref<HTMLElement | null>(null);
 const remoteRef = ref<InstanceType<typeof RemoteHotspot> | null>(null);
@@ -462,13 +472,79 @@ const voiceBindingNeedsManualCompletion = computed(() => {
 
 function openManualShortcutEditor() {
   const button = selectedMappingButton.value;
-  if (!button || !isVoiceButton(button.id)) return;
+  if (!button) return;
   manualEditor.value = {
     buttonId: button.id,
     slot: isVoiceButton(button.id) ? 1 : button.selectedClick,
     initialKeys: actionKeys(button.selectedAction),
   };
   closeActionMenus();
+}
+
+function placeResetTip() {
+  const anchor = resetInfoBtn.value;
+  const tip = resetTipEl.value;
+  if (!anchor || !tip) return;
+  const margin = 8;
+  const pad = 8;
+  const rect = anchor.getBoundingClientRect();
+  const width = tip.offsetWidth || Math.min(420, window.innerWidth - pad * 2);
+  const height = tip.offsetHeight || 200;
+  const below = window.innerHeight - rect.bottom - margin;
+  const above = rect.top - margin;
+  let top = below >= height || below >= above ? rect.bottom + margin : rect.top - height - margin;
+  let left = rect.right - width;
+  left = Math.max(pad, Math.min(left, window.innerWidth - width - pad));
+  top = Math.max(pad, Math.min(top, window.innerHeight - height - pad));
+  resetTipStyle.value = { position: "fixed", top: `${Math.round(top)}px`, left: `${Math.round(left)}px`, zIndex: "2000", maxWidth: `${Math.min(420, window.innerWidth - pad * 2)}px` };
+}
+
+async function openResetTip() {
+  if (resetTipCloseTimer) clearTimeout(resetTipCloseTimer);
+  resetTipCloseTimer = null;
+  resetTipStyle.value = { position: "fixed", top: "0", left: "0", visibility: "hidden", zIndex: "2000" };
+  showResetTip.value = true;
+  await nextTick();
+  requestAnimationFrame(placeResetTip);
+}
+
+function scheduleCloseResetTip() {
+  if (resetTipCloseTimer) clearTimeout(resetTipCloseTimer);
+  resetTipCloseTimer = setTimeout(() => { showResetTip.value = false; }, 120);
+}
+
+function toggleResetTip() {
+  if (showResetTip.value) showResetTip.value = false;
+  else void openResetTip();
+}
+
+function onDocumentKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && showResetTip.value) {
+    event.preventDefault();
+    showResetTip.value = false;
+    resetInfoBtn.value?.focus();
+  }
+}
+
+async function resetStandardMappings() {
+  if (capturing.value || resetting.value || props.saving) return;
+  resetting.value = true;
+  resetStatus.value = null;
+  resetError.value = null;
+  try {
+    const next = await invoke<DeviceConfig>("reset_xiaomi_standard_key_bindings");
+    closeManualShortcutEditor();
+    closeActionMenus();
+    selectedClickById.value = Object.fromEntries(
+      Object.entries(selectedClickById.value).map(([id, slot]) => [id, isVoiceButton(id) || isVolumeButton(id) ? slot : 1]),
+    );
+    emit("save", next);
+    resetStatus.value = "已重置，音量和语音设置已保留。";
+  } catch (error) {
+    resetError.value = `重置失败：${String(error)}`;
+  } finally {
+    resetting.value = false;
+  }
 }
 
 function closeManualShortcutEditor() {
@@ -614,8 +690,10 @@ function startPolling() {
   pollTimer = setInterval(async () => {
     if (!capturing.value || applied) return;
     try {
-      const result = await invoke<{ keys: number[]; labels: string[] } | null>(
-        "capture_shortcut_poll"
+      const sessionId = captureSessionId.value;
+      if (sessionId == null) return;
+      const result = await invoke<{ sessionId: number; keys: number[]; labels: string[] } | null>(
+        "capture_shortcut_poll", { sessionId }
       );
       if (result && Array.isArray(result.keys) && result.keys.length > 0) {
         onCaptured(result.keys, result.labels || []);
@@ -626,7 +704,8 @@ function startPolling() {
   }, 50);
 }
 
-async function onCaptured(keys: number[], labels: string[]) {
+async function onCaptured(keys: number[], labels: string[], sessionId?: number) {
+  if (sessionId != null && sessionId !== captureSessionId.value) return;
   if (applied) return;
   applied = true;
   stopPolling();
@@ -637,11 +716,12 @@ async function onCaptured(keys: number[], labels: string[]) {
     applyCapturedKeys(buttonId, keys);
   }
   try {
-    await invoke("capture_shortcut_stop");
+    await invoke("capture_shortcut_stop", { sessionId: captureSessionId.value });
   } catch {
     /* ignore */
   }
   capturing.value = false;
+  captureSessionId.value = null;
   void nextTick().then(updateLine);
 }
 
@@ -658,10 +738,11 @@ async function startCapture(buttonId = selectedId.value) {
   liveLabels.value = [];
   applied = false;
   try {
-    await invoke("capture_shortcut_start");
+    captureSessionId.value = await invoke<number>("capture_shortcut_start");
     startPolling();
   } catch (e) {
     capturing.value = false;
+    captureSessionId.value = null;
     stopPolling();
     captureError.value = String(e);
   }
@@ -673,10 +754,11 @@ async function cancelCapture() {
   liveLabels.value = [];
   applied = false;
   try {
-    await invoke("capture_shortcut_stop");
+    await invoke("capture_shortcut_stop", { sessionId: captureSessionId.value });
   } catch {
     /* ignore */
   }
+  captureSessionId.value = null;
 }
 
 /** 媒体键兜底：直接设置单键（仅非语音键调用；先结束吞键会话再应用，走既有保存链路） */
@@ -848,18 +930,22 @@ watch([selectedId, hoverId], () => {
 });
 
 onMounted(async () => {
+  window.addEventListener("resize", placeResetTip);
+  window.addEventListener("scroll", placeResetTip, true);
+  document.addEventListener("keydown", onDocumentKeydown);
   try {
-    unlistenCaptured = await listen<{ keys: number[]; labels: string[] }>(
+    unlistenCaptured = await listen<{ sessionId?: number; keys: number[]; labels: string[] }>(
       "shortcut-captured",
       (event) => {
         const keys = event.payload?.keys;
         if (!keys?.length) return;
-        onCaptured(keys, event.payload.labels || []);
+        onCaptured(keys, event.payload.labels || [], event.payload.sessionId);
       }
     );
-    unlistenProgress = await listen<{ labels: string[] }>(
+    unlistenProgress = await listen<{ sessionId?: number; labels: string[] }>(
       "shortcut-capture-progress",
       (event) => {
+        if (event.payload?.sessionId != null && event.payload.sessionId !== captureSessionId.value) return;
         liveLabels.value = event.payload?.labels || [];
       }
     );
@@ -880,6 +966,10 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener("resize", placeResetTip);
+  window.removeEventListener("scroll", placeResetTip, true);
+  document.removeEventListener("keydown", onDocumentKeydown);
+  if (resetTipCloseTimer) clearTimeout(resetTipCloseTimer);
   stopPolling();
   unlistenCaptured?.();
   unlistenProgress?.();
@@ -891,7 +981,7 @@ onUnmounted(() => {
   window.removeEventListener("keyup", blockBrowserKeysDuringCapture, true);
   window.removeEventListener("click", closeActionMenus);
   if (capturing.value) {
-    invoke("capture_shortcut_stop").catch(() => {});
+    invoke("capture_shortcut_stop", { sessionId: captureSessionId.value }).catch(() => {});
   }
 });
 </script>
@@ -940,7 +1030,6 @@ onUnmounted(() => {
             {{ capturing && selectedId === selectedMappingButton.id ? t("mapping.cancelCapture") : t("mapping.capture") }}
           </button>
           <button
-            v-if="isVoiceButton(selectedMappingButton.id)"
             type="button"
             class="selection-action"
             :disabled="capturing"
@@ -1115,11 +1204,49 @@ onUnmounted(() => {
           <h3>{{ t("mapping.mappingList") }}</h3>
           <span>{{ t("mapping.keysAndAutosave", { count: filteredMappingButtons.length }) }}</span>
         </div>
+        <div class="mapping-list-actions">
+          <button
+            type="button"
+            class="selection-action mapping-reset-all"
+            :disabled="capturing || resetting || saving"
+            @click="resetStandardMappings"
+          >{{ resetting ? "重置中…" : "一键重置" }}</button>
+          <button
+            ref="resetInfoBtn"
+            type="button"
+            class="title-info"
+            :aria-expanded="showResetTip"
+            aria-label="一键重置风险说明"
+            @mouseenter="openResetTip"
+            @mouseleave="scheduleCloseResetTip"
+            @focus="openResetTip"
+            @blur="scheduleCloseResetTip"
+            @click.stop="toggleResetTip"
+          ><span aria-hidden="true">i</span></button>
+        </div>
         <label class="mapping-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
           <input v-model="searchQuery" type="search" :placeholder="t('mapping.search')" :aria-label="t('mapping.search')" />
         </label>
       </div>
+      <Teleport to="body">
+        <div
+          v-if="showResetTip"
+          ref="resetTipEl"
+          class="floating-info-tip reset-info-tip"
+          role="tooltip"
+          :style="resetTipStyle"
+          @mouseenter="openResetTip"
+          @mouseleave="scheduleCloseResetTip"
+        >
+          <p class="tip-lead">重置前请注意</p>
+          <div class="tip-block tip-on"><div class="tip-badge">会重置什么</div><p>除音量和语音键外，其他按键的单击恢复软件默认映射，双击、三击、四击和长按的自定义绑定全部清除，包括鼠标动作。</p></div>
+          <div class="tip-block tip-off"><div class="tip-badge">有什么影响</div><p>点击后立即保存，原来的自定义绑定会被覆盖，本功能不提供撤销。例如电源键双击设置的 Alt+F4 将被清除。</p></div>
+          <div class="tip-block tip-on"><div class="tip-badge">会保留什么</div><p>音量加减、静音、语音键及语音相关设置保持不变。按键名称、连击间隔、蓝牙连接、音频和其他设置也不会重置。</p></div>
+        </div>
+      </Teleport>
+      <p v-if="resetStatus" class="mapping-reset-status" role="status">{{ resetStatus }}</p>
+      <p v-if="resetError" class="mapping-reset-error" role="alert">{{ resetError }}</p>
 
       <VoiceShortcutComposer
         v-if="manualEditor"
@@ -1797,6 +1924,50 @@ onUnmounted(() => {
   font-size: 11px;
   white-space: nowrap;
 }
+
+.mapping-list-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.mapping-reset-all { white-space: nowrap; }
+.title-info {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: transparent;
+  font: italic 700 12px/1 Georgia, "Times New Roman", serif;
+  cursor: help;
+}
+.title-info:hover,
+.title-info:focus-visible { border-color: var(--primary); color: var(--primary); outline: 2px solid var(--primary); outline-offset: 2px; }
+.floating-info-tip {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 16px));
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--card-bg);
+  box-shadow: var(--dialog-shadow);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.floating-info-tip .tip-lead { margin: 0 0 10px; font-weight: 700; }
+.floating-info-tip .tip-block { margin: 8px 0; padding: 9px 10px; border-radius: 8px; }
+.floating-info-tip .tip-block p { margin: 5px 0 0; }
+.floating-info-tip .tip-on { background: var(--success-bg); }
+.floating-info-tip .tip-off { background: var(--danger-bg); }
+.floating-info-tip .tip-badge { font-size: 11px; font-weight: 700; }
+.mapping-reset-status,
+.mapping-reset-error { margin: -4px 0 10px; font-size: 12px; line-height: 1.4; }
+.mapping-reset-status { color: var(--success-text); }
+.mapping-reset-error { color: var(--danger); }
 
 .mapping-remote-wrap {
   min-height: 392px;

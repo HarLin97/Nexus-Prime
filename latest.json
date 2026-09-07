@@ -1,16 +1,16 @@
 {
-  "tag_name": "v0.4.0",
-  "name": "Nexus Prime v0.4.0",
-  "body": "- 语音按键改为单一会话状态机，重复 DOWN/UP 不会重复触发输入法。\n- 微信启动语音输入改为一次 Ctrl+Win 短脉冲；按住说话继续使用 Ctrl+Shift+D。\n- F5、Ctrl 与 Win 固件泄漏按本次语音周期受控处理，避免粘键和重复面板。",
+  "tag_name": "v0.4.1",
+  "name": "Nexus Prime v0.4.1",
+  "body": "- 按键映射支持手动输入 Alt+F4 等组合，并新增一键重置及风险说明。\n- Alt+F4、Alt+Tab、Alt+Space 和 Alt+Esc 改走 Windows 系统组合键路径。\n- 快捷键录入增加会话标识，旧事件不会覆盖当前绑定。",
   "published_at": null,
   "draft": false,
   "prerelease": false,
   "assets": [
     {
-      "name": "Nexus.Prime_0.4.0_x64-setup.exe",
-      "size": 13339277,
-      "digest": "sha256:7f0ee7750e029a74708793228a11653580b4091c6c0694c226ba0aa30d225b18",
-      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.0/Nexus.Prime_0.4.0_x64-setup.exe"
+      "name": "Nexus.Prime_0.4.1_x64-setup.exe",
+      "size": 13339714,
+      "digest": "sha256:45146b9b7e30d4369ba4f762a4b63ddc09d2e6c39c063512f91a04f9c8cfc91f",
+      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.1/Nexus.Prime_0.4.1_x64-setup.exe"
     }
   ]
 }

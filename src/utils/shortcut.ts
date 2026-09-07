@@ -107,6 +107,59 @@ export function keyLabel(vk: number): string {
   return `VK_0x${vk.toString(16).toUpperCase()}`;
 }
 
+/** Parse a hand-written shortcut without relying on the Windows keyboard hook. */
+export function parseShortcutText(input: string): { keys?: number[]; error?: string } {
+  const normalized = input.trim();
+  if (!normalized) return { error: "请输入至少一个按键" };
+  const tokens = normalized.split("+").map((item) => item.trim().toLowerCase());
+  if (tokens.some((item) => !item)) return { error: "请使用 Plus 表示加号键" };
+
+  const modifiers: Record<string, number> = {
+    ctrl: 0x11, control: 0x11, lctrl: 0xa2, leftctrl: 0xa2, 左ctrl: 0xa2,
+    rctrl: 0xa3, rightctrl: 0xa3, 右ctrl: 0xa3,
+    shift: 0x10, lshift: 0xa0, leftshift: 0xa0, 左shift: 0xa0,
+    rshift: 0xa1, rightshift: 0xa1, 右shift: 0xa1,
+    alt: 0x12, lalt: 0xa4, leftalt: 0xa4, 左alt: 0xa4,
+    ralt: 0xa5, rightalt: 0xa5, 右alt: 0xa5,
+    win: 0x5b, lwin: 0x5b, leftwin: 0x5b, 左win: 0x5b,
+    rwin: 0x5c, rightwin: 0x5c, 右win: 0x5c,
+  };
+  const named: Record<string, number> = {
+    backspace: 0x08, tab: 0x09, enter: 0x0d, esc: 0x1b, escape: 0x1b,
+    space: 0x20, pageup: 0x21, pagedown: 0x22, end: 0x23, home: 0x24,
+    left: 0x25, up: 0x26, right: 0x27, down: 0x28, insert: 0x2d, delete: 0x2e,
+    plus: 0xbb, numplus: 0x6b, numpadplus: 0x6b, numminus: 0x6d,
+    numdivide: 0x6f, numdecimal: 0x6e, mute: 0xad, volumedown: 0xae,
+    volumeup: 0xaf, medianext: 0xb0, mediaprevious: 0xb1, mediastop: 0xb2,
+    mediaplaypause: 0xb3,
+  };
+  const keys: number[] = [];
+  const modifierGroups = new Set<string>();
+  for (const token of tokens) {
+    const modifier = modifiers[token];
+    if (modifier != null) {
+      const group = modifierGroupsForVk(modifier);
+      if (modifierGroups.has(group)) return { error: `重复的 ${group} 修饰键` };
+      modifierGroups.add(group);
+      keys.push(modifier);
+      continue;
+    }
+    let key = named[token];
+    if (key == null && /^[a-z]$/.test(token)) key = token.toUpperCase().charCodeAt(0);
+    if (key == null && /^\d$/.test(token)) key = token.charCodeAt(0);
+    const fn = /^f([1-9]|1\d|2[0-4])$/.exec(token);
+    if (key == null && fn) key = 0x6f + Number(fn[1]);
+    if (key == null) return { error: `不支持的按键：${token}` };
+    if (keys.includes(key)) return { error: `重复的按键：${token}` };
+    keys.push(key);
+  }
+  return { keys };
+}
+
+function modifierGroupsForVk(vk: number): string {
+  return modifierGroups[vk] || "";
+}
+
 /** 录入 UI 常驻媒体/系统键兜底（对齐上游 MEDIA_PICK_KEYS，标签复用 keyLabel） */
 export const MEDIA_PICK_KEYS: { vk: number; label: string }[] = [
   { vk: 0xaf, label: keyLabel(0xaf) },

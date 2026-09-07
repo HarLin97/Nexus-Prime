@@ -2253,6 +2253,13 @@ fn has_alt_modifier(vks: &[u16]) -> bool {
     vks.iter().any(|&vk| is_alt_modifier(vk))
 }
 
+fn is_system_alt_chord(vks: &[u16]) -> bool {
+    // 这些按键的 Windows 语义依赖 WM_SYSKEY*；不能像 Alt+字母一样
+    // 降级为仅投递给前台窗口的普通消息。
+    has_alt_modifier(vks) && vks.iter().any(|vk| matches!(vk, 0x09 | 0x1B | 0x20 | 0x73))
+}
+
+#[cfg(test)]
 fn is_system_alt_tab_chord(vks: &[u16]) -> bool {
     has_alt_modifier(vks) && vks.contains(&0x09) // VK_TAB
 }
@@ -2337,7 +2344,7 @@ enum FallbackInjectionRoute {
 /// task switcher. Other Alt chords intentionally use window messages to avoid
 /// activating the system menu or registered global hotkeys.
 fn fallback_injection_route(vks: &[u16]) -> FallbackInjectionRoute {
-    if is_system_alt_tab_chord(vks) {
+    if is_system_alt_chord(vks) {
         FallbackInjectionRoute::SystemAltTabSendInput
     } else if has_alt_modifier(vks) {
         FallbackInjectionRoute::AltWindowMessage
@@ -2407,8 +2414,9 @@ pub fn tap_vks(vks: &[u16], hold_ms: u64) {
 fn tap_vks_fallback(vks: &[u16], hold_ms: u64) {
     match fallback_injection_route(vks) {
         FallbackInjectionRoute::SystemAltTabSendInput => {
-            // Do not arm ALT_CHORD_ACTIVE here. Alt+Tab must reach Windows as a
-            // genuine system chord rather than being swallowed by our LL hook.
+            // Do not arm ALT_CHORD_ACTIVE here. Windows system Alt chords must
+            // reach the shell as genuine WM_SYSKEY input rather than being
+            // swallowed by our LL hook.
             inject_chord_via_send_input(vks, hold_ms);
             let _ = ACTION_SEQ.fetch_add(1, Ordering::Relaxed);
             log::debug!(
@@ -2958,6 +2966,16 @@ mod gesture_tests {
     }
 
     #[test]
+    fn routes_required_alt_system_chords_through_real_system_input() {
+        for keys in [[0x12, 0x73], [0xA4, 0x20], [0xA5, 0x1B], [0x12, 0x09]] {
+            assert!(is_system_alt_chord(&keys));
+            assert_eq!(fallback_injection_route(&keys), FallbackInjectionRoute::SystemAltTabSendInput);
+        }
+        assert!(!is_system_alt_chord(&[0x12, 0x53]));
+        assert_eq!(fallback_injection_route(&[0x12, 0x53]), FallbackInjectionRoute::AltWindowMessage);
+    }
+
+    #[test]
     fn alt_tab_uses_unarmed_send_input_route() {
         assert_eq!(
             fallback_injection_route(&[0x12, 0x09]),
@@ -3162,17 +3180,9 @@ mod gesture_tests {
     }
 
     #[test]
-    fn non_tab_alt_chords_keep_window_message_route() {
-        assert_eq!(
-            fallback_injection_route(&[0xA5, 0x20]),
-            FallbackInjectionRoute::AltWindowMessage
-        );
+    fn non_system_alt_chords_keep_window_message_route() {
         assert_eq!(
             fallback_injection_route(&[0xA5, 0x53]),
-            FallbackInjectionRoute::AltWindowMessage
-        );
-        assert_eq!(
-            fallback_injection_route(&[0x12, 0x73]),
             FallbackInjectionRoute::AltWindowMessage
         );
         assert_eq!(

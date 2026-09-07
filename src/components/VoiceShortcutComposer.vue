@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import {
   composeShortcutVks,
   keyLabel,
+  parseShortcutText,
   splitShortcutVks,
   type ModifierSide,
 } from "../utils/shortcut";
@@ -24,6 +25,7 @@ const alt = ref<ModifierSide>("none");
 const win = ref<ModifierSide>("none");
 const mainKey = ref<number | null>(null);
 const preservedExtraKeys = ref<number[]>([]);
+const shortcutText = ref("");
 
 type KeyOption = { value: number; label: string };
 
@@ -38,7 +40,7 @@ const keyGroups = computed(() => [
   },
   {
     label: "功能键",
-    options: Array.from({ length: 12 }, (_, index) => ({ value: 0x70 + index, label: `F${index + 1}` })),
+    options: Array.from({ length: 24 }, (_, index) => ({ value: 0x70 + index, label: `F${index + 1}` })),
   },
   {
     label: "编辑与导航",
@@ -66,7 +68,9 @@ const composedKeys = computed(() => {
   );
 });
 
-const preview = computed(() => composedKeys.value.map(keyLabel).join(" + ") || "尚未选择按键");
+const parsedText = computed(() => shortcutText.value.trim() ? parseShortcutText(shortcutText.value) : {});
+const effectiveKeys = computed(() => parsedText.value.keys || composedKeys.value);
+const preview = computed(() => effectiveKeys.value.map(keyLabel).join(" + ") || "尚未选择按键");
 
 function resetFromKeys(keys: number[]) {
   const shortcut = splitShortcutVks(keys);
@@ -76,11 +80,12 @@ function resetFromKeys(keys: number[]) {
   win.value = shortcut.modifiers.win;
   mainKey.value = shortcut.mainKey;
   preservedExtraKeys.value = shortcut.extraKeys;
+  shortcutText.value = "";
 }
 
 function apply() {
-  if (!composedKeys.value.length) return;
-  emit("apply", composedKeys.value);
+  if (!effectiveKeys.value.length || parsedText.value.error) return;
+  emit("apply", effectiveKeys.value);
 }
 
 watch(() => props.initialKeys, resetFromKeys, { immediate: true });
@@ -96,7 +101,23 @@ watch(() => props.initialKeys, resetFromKeys, { immediate: true });
       <button type="button" class="shortcut-composer-close" aria-label="关闭手动组合" @click="emit('cancel')">×</button>
     </div>
 
-    <p class="shortcut-composer-note">不依赖系统键盘钩子。可只选修饰键，或为修饰键加一个主键。</p>
+    <p class="shortcut-composer-note">不依赖系统键盘钩子。可直接输入 <code>Alt+F4</code>，或从下方选择按键。</p>
+
+    <label class="shortcut-text-input">
+      <span>快捷键文本</span>
+      <input
+        v-model="shortcutText"
+        name="shortcut-text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="例如 Alt+F4"
+        :aria-invalid="Boolean(parsedText.error)"
+        aria-describedby="shortcut-text-help"
+      />
+    </label>
+    <p id="shortcut-text-help" :class="['shortcut-text-help', { error: parsedText.error }]">
+      {{ parsedText.error || "支持 Ctrl、Shift、Alt、Win、F1–F24、方向键与媒体键；加号键请写 Plus。" }}
+    </p>
 
     <div class="shortcut-composer-fields">
       <label><span>Ctrl</span><select v-model="ctrl"><option value="none">不使用</option><option value="generic">任意 Ctrl</option><option value="left">左 Ctrl</option><option value="right">右 Ctrl</option></select></label>
@@ -115,7 +136,7 @@ watch(() => props.initialKeys, resetFromKeys, { immediate: true });
 
     <div class="shortcut-composer-actions">
       <button type="button" class="selection-action" @click="emit('cancel')">取消</button>
-      <button type="button" class="selection-action primary" :disabled="!composedKeys.length" @click="apply">应用组合</button>
+      <button type="button" class="selection-action primary" :disabled="!effectiveKeys.length || Boolean(parsedText.error)" @click="apply">应用组合</button>
     </div>
   </section>
 </template>
@@ -128,6 +149,12 @@ watch(() => props.initialKeys, resetFromKeys, { immediate: true });
 .shortcut-composer-close { width: 28px; height: 28px; border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-secondary); background: var(--surface-raised); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
 .shortcut-composer-close:hover { color: var(--text); background: var(--surface-hover); }
 .shortcut-composer-note { margin: 10px 0 12px; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.shortcut-text-input { display: grid; gap: 5px; margin-bottom: 4px; color: var(--text-secondary); font-size: 10px; font-weight: 700; }
+.shortcut-text-input input { width: 100%; height: 34px; box-sizing: border-box; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 7px; outline: 0; color: var(--text); background: var(--surface-raised); font: inherit; font-size: 12px; }
+.shortcut-text-input input:focus-visible { border-color: var(--primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.shortcut-text-input input[aria-invalid="true"] { border-color: var(--danger, #c43b3b); }
+.shortcut-text-help { min-height: 16px; margin: 0 0 10px; color: var(--text-secondary); font-size: 10px; line-height: 1.45; }
+.shortcut-text-help.error { color: var(--danger, #c43b3b); }
 .shortcut-composer-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .shortcut-composer-fields label { display: grid; gap: 5px; min-width: 0; color: var(--text-secondary); font-size: 10px; font-weight: 700; }
 .shortcut-composer-fields select { width: 100%; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 7px; outline: 0; color: var(--text); background: var(--surface-raised); font: inherit; font-size: 11px; }

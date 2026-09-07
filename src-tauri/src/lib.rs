@@ -278,6 +278,7 @@ pub fn run() {
             ipc::commands::stop_bridge,
             ipc::commands::get_config,
             ipc::commands::save_config,
+            ipc::commands::reset_xiaomi_standard_key_bindings,
             ipc::commands::get_key_mappings,
             ipc::commands::update_key_mapping,
             ipc::commands::capture_shortcut_start,

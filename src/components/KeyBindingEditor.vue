@@ -19,6 +19,7 @@ const capturing = ref(false);
 const captureError = ref<string | null>(null);
 const captureStatus = ref("先点「录入」，再按目标单键或组合键");
 const liveLabels = ref<string[]>([]);
+const captureSessionId = ref<number | null>(null);
 const listRef = ref<HTMLElement | null>(null);
 
 let unlistenCaptured: UnlistenFn | null = null;
@@ -139,17 +140,18 @@ function modifierVkForKey(key: string): number | null {
 
 onMounted(async () => {
   try {
-    unlistenCaptured = await listen<{ keys: number[]; labels: string[] }>(
+    unlistenCaptured = await listen<{ sessionId?: number; keys: number[]; labels: string[] }>(
       "shortcut-captured",
       (event) => {
         const keys = event.payload?.keys;
         if (!keys?.length) return;
-        onCaptured(keys, event.payload.labels || []);
+        onCaptured(keys, event.payload.labels || [], event.payload.sessionId);
       }
     );
-    unlistenProgress = await listen<{ labels: string[] }>(
+    unlistenProgress = await listen<{ sessionId?: number; labels: string[] }>(
       "shortcut-capture-progress",
       (event) => {
+        if (event.payload?.sessionId != null && event.payload.sessionId !== captureSessionId.value) return;
         liveLabels.value = event.payload?.labels || [];
         if (capturing.value && liveLabels.value.length) {
           captureStatus.value = `正在录入：${liveLabels.value.join(" + ")} …`;
@@ -170,7 +172,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", blockBrowserKeysDuringCapture, true);
   window.removeEventListener("keyup", blockBrowserKeysDuringCapture, true);
   if (capturing.value) {
-    invoke("capture_shortcut_stop").catch(() => {});
+    invoke("capture_shortcut_stop", { sessionId: captureSessionId.value }).catch(() => {});
   }
 });
 
@@ -187,8 +189,10 @@ function startPolling() {
   pollTimer = setInterval(async () => {
     if (!capturing.value || applied) return;
     try {
-      const result = await invoke<{ keys: number[]; labels: string[] } | null>(
-        "capture_shortcut_poll"
+      const sessionId = captureSessionId.value;
+      if (sessionId == null) return;
+      const result = await invoke<{ sessionId: number; keys: number[]; labels: string[] } | null>(
+        "capture_shortcut_poll", { sessionId }
       );
       if (result && Array.isArray(result.keys) && result.keys.length > 0) {
         onCaptured(result.keys, result.labels || []);
@@ -199,7 +203,8 @@ function startPolling() {
   }, 50);
 }
 
-async function onCaptured(keys: number[], labels: string[]) {
+async function onCaptured(keys: number[], labels: string[], sessionId?: number) {
+  if (sessionId != null && sessionId !== captureSessionId.value) return;
   if (applied) return;
   applied = true;
   stopPolling();
@@ -213,11 +218,12 @@ async function onCaptured(keys: number[], labels: string[]) {
     captureStatus.value = "录入结束";
   }
   try {
-    await invoke("capture_shortcut_stop");
+    await invoke("capture_shortcut_stop", { sessionId: captureSessionId.value });
   } catch {
     /* ignore */
   }
   capturing.value = false;
+  captureSessionId.value = null;
   editingKey.value = null;
 }
 
@@ -234,10 +240,11 @@ async function startEdit(buttonId: string) {
   applied = false;
   captureStatus.value = "正在录入：请按目标键或组合键……";
   try {
-    await invoke("capture_shortcut_start");
+    captureSessionId.value = await invoke<number>("capture_shortcut_start");
     startPolling();
   } catch (e) {
     capturing.value = false;
+    captureSessionId.value = null;
     editingKey.value = null;
     stopPolling();
     captureError.value = String(e);
@@ -252,10 +259,11 @@ async function cancelCapture() {
   liveLabels.value = [];
   applied = false;
   try {
-    await invoke("capture_shortcut_stop");
+    await invoke("capture_shortcut_stop", { sessionId: captureSessionId.value });
   } catch {
     /* ignore */
   }
+  captureSessionId.value = null;
   captureStatus.value = "已取消录入";
 }
 

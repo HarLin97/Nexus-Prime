@@ -32,4 +32,16 @@ describe("VoiceShortcutComposer", () => {
     await wrapper.get("button.selection-action.primary").trigger("click");
     expect(wrapper.emitted("apply")).toEqual([[[0xa2, 0x45, 0x91]]]);
   });
+
+  it("uses valid text input and blocks invalid text without replacing the selection", async () => {
+    const wrapper = mountComposer([0x41]);
+    const input = wrapper.get('input[name="shortcut-text"]');
+    await input.setValue("Alt + F4");
+    await wrapper.get("button.selection-action.primary").trigger("click");
+    expect(wrapper.emitted("apply")).toEqual([[[0x12, 0x73]]]);
+
+    await input.setValue("Alt+MissingKey");
+    expect(wrapper.get("button.selection-action.primary").attributes("disabled")).toBeDefined();
+    expect(wrapper.text()).toContain("不支持的按键");
+  });
 });

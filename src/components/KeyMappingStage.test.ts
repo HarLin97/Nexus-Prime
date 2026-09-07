@@ -6,7 +6,8 @@ import type { DeviceConfig } from "../types";
 import KeyMappingStage from "./KeyMappingStage.vue";
 import VoiceShortcutComposer from "./VoiceShortcutComposer.vue";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
+const invokeMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
 function createConfig(): DeviceConfig {
@@ -169,6 +170,33 @@ describe("KeyMappingStage voice mapping", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await nextTick();
     expect(wrapper.find(".click-menu").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows reset risk help without resetting, then saves the backend reset result", async () => {
+    const resetConfig = createConfig();
+    resetConfig.button_bindings.power = { type: "SingleKey", value: 0x1b };
+    resetConfig.long_press_bindings = {};
+    resetConfig.multi_click_bindings = {};
+    invokeMock.mockImplementation((command: string) =>
+      Promise.resolve(command === "reset_xiaomi_standard_key_bindings" ? resetConfig : []),
+    );
+    const wrapper = mount(KeyMappingStage, {
+      props: { config: createConfig() },
+      global: { plugins: [i18n], stubs: { RemoteHotspot: true } },
+    });
+
+    const tip = wrapper.get('[aria-label="一键重置风险说明"]');
+    await tip.trigger("mouseenter");
+    await nextTick();
+    expect(document.body.textContent).toContain("重置前请注意");
+    expect(invokeMock).not.toHaveBeenCalledWith("reset_xiaomi_standard_key_bindings");
+
+    await wrapper.get("button.mapping-reset-all").trigger("click");
+    await nextTick();
+    expect(invokeMock).toHaveBeenCalledWith("reset_xiaomi_standard_key_bindings");
+    expect(latestSave(wrapper)).toBe(resetConfig);
+    expect(wrapper.text()).toContain("音量和语音设置已保留");
     wrapper.unmount();
   });
 });

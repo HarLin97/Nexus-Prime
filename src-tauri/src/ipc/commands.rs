@@ -238,6 +238,14 @@ pub async fn save_config(
     config_manager.save_device_config(device, &config)
 }
 
+/// 批量恢复普通遥控器按键默认值；音量与语音设置由配置管理器保留。
+#[tauri::command]
+pub async fn reset_xiaomi_standard_key_bindings(
+    config_manager: State<'_, ConfigManager>,
+) -> Result<DeviceConfig, String> {
+    config_manager.reset_xiaomi_standard_key_bindings()
+}
+
 /// 获取按键映射
 #[tauri::command]
 pub async fn get_key_mappings(
@@ -268,28 +276,30 @@ pub async fn update_key_mapping(
 pub async fn capture_shortcut_start(
     app: AppHandle,
     session: State<'_, crate::bridges::shared::shortcut_capture::ShortcutCaptureSession>,
-) -> Result<(), String> {
-    session.start(app)?;
-    log::info!("Shortcut capture started");
-    Ok(())
+) -> Result<u64, String> {
+    let session_id = session.start(app)?;
+    log::info!("Shortcut capture started session_id={session_id}");
+    Ok(session_id)
 }
 
 /// 取消快捷键捕获
 #[tauri::command]
 pub async fn capture_shortcut_stop(
+    session_id: Option<u64>,
     session: State<'_, crate::bridges::shared::shortcut_capture::ShortcutCaptureSession>,
 ) -> Result<Vec<u32>, String> {
-    session.cancel()?;
-    log::info!("Shortcut capture cancelled");
+    session.cancel(session_id)?;
+    log::info!("Shortcut capture cancelled session_id={session_id:?}");
     Ok(vec![])
 }
 
 /// 轮询取出录制结果（事件可能丢失时的兜底；取出后清空）
 #[tauri::command]
 pub async fn capture_shortcut_poll(
+    session_id: u64,
     session: State<'_, crate::bridges::shared::shortcut_capture::ShortcutCaptureSession>,
 ) -> Result<Option<crate::bridges::shared::shortcut_capture::ShortcutCapturedPayload>, String> {
-    Ok(session.take_result())
+    Ok(session.take_result(session_id))
 }
 
 /// 获取音频设备列表

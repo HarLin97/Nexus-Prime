@@ -526,6 +526,30 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// 恢复小米遥控器的普通按键默认值。音量、静音和语音属于独立设置，
+    /// 不能被这个批量操作覆盖。
+    pub fn reset_xiaomi_standard_key_bindings(&self) -> Result<DeviceConfig, String> {
+        let mut config = self.get_device_config("xiaomi")?;
+        let defaults = Self::xiaomi_default_bindings();
+        let standard = [
+            "power", "up", "down", "left", "right", "ok", "back", "home", "menu", "tv",
+            // 旧配置可能仍使用这些方向键 id，也一并恢复并清理手势。
+            "dpad_up", "dpad_down", "dpad_left", "dpad_right",
+        ];
+
+        for id in standard {
+            if let Some(action) = defaults.get(id) {
+                config.button_bindings.insert(id.to_string(), action.clone());
+            }
+            config.long_press_bindings.remove(id);
+            config.multi_click_bindings.remove(id);
+        }
+
+        self.save_device_config("xiaomi", &config)?;
+        log::info!("XIAOMI CONFIG reset standard key bindings; voice and volume preserved");
+        Ok(config)
+    }
+
     // ---- 全局设置 ----
 
     fn load_global_settings_unlocked(&self) -> Result<GlobalSettings, String> {
@@ -711,6 +735,51 @@ mod tests {
             config.button_bindings.get("mic"),
             Some(&KeyAction::ComboKey(vec![0xA2, 0xA0, 0x44]))
         );
+    }
+
+    #[test]
+    fn reset_scope_keeps_volume_and_voice_ids_outside_the_standard_set() {
+        let standard = [
+            "power", "up", "down", "left", "right", "ok", "back", "home", "menu", "tv",
+            "dpad_up", "dpad_down", "dpad_left", "dpad_right",
+        ];
+        for protected in ["mic", "voice", "volume_up", "volume_down", "mute", "volume_mute"] {
+            assert!(!standard.contains(&protected));
+        }
+    }
+
+    #[test]
+    fn reset_standard_bindings_restores_only_standard_keys_and_gestures() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let config_dir = std::env::temp_dir().join(format!("nexus-prime-reset-{unique}"));
+        fs::create_dir(&config_dir).unwrap();
+        let manager = ConfigManager {
+            config_dir: config_dir.clone(),
+            device_cache: Mutex::new(HashMap::new()),
+            global_settings_lock: Mutex::new(()),
+        };
+        let mut config = ConfigManager::default_config_for("xiaomi");
+        config.button_bindings.insert("power".into(), KeyAction::ComboKey(vec![0xA4, 0x73]));
+        config.button_bindings.insert("volume_up".into(), KeyAction::SingleKey(0x41));
+        config.button_bindings.insert("mic".into(), KeyAction::SingleKey(0xA5));
+        config.long_press_bindings.insert("power".into(), KeyAction::MouseClick);
+        config.long_press_bindings.insert("volume_up".into(), KeyAction::MouseClick);
+        config.multi_click_bindings.entry("power".into()).or_default().insert(2, KeyAction::SingleKey(0x41));
+        config.voice_hotkey = Some(vec!["rightalt".into()]);
+        manager.save_device_config("xiaomi", &config).unwrap();
+
+        let reset = manager.reset_xiaomi_standard_key_bindings().unwrap();
+        assert_eq!(reset.button_bindings.get("power"), Some(&KeyAction::SingleKey(0x1B)));
+        assert_eq!(reset.button_bindings.get("volume_up"), Some(&KeyAction::SingleKey(0x41)));
+        assert_eq!(reset.button_bindings.get("mic"), Some(&KeyAction::SingleKey(0xA5)));
+        assert_eq!(reset.voice_hotkey, Some(vec!["rightalt".into()]));
+        assert!(!reset.long_press_bindings.contains_key("power"));
+        assert!(reset.long_press_bindings.contains_key("volume_up"));
+        assert!(reset.multi_click_bindings.get("power").is_none());
+
+        drop(manager);
+        fs::remove_file(config_dir.join("xiaomi.json")).unwrap();
+        fs::remove_dir(config_dir).unwrap();
     }
 
     #[test]

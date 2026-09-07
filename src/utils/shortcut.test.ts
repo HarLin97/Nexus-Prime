@@ -4,10 +4,17 @@ import {
   isLegacyIncompleteCodexShortcut,
   normalizeShortcutVks,
   splitShortcutVks,
+  parseShortcutText,
   vksToHotkeyNames,
 } from "./shortcut";
 
 describe("shortcut helpers", () => {
+  it("parses manual shortcut text without changing unknown persisted values", () => {
+    expect(parseShortcutText(" alt + f4 ")).toEqual({ keys: [0x12, 0x73] });
+    expect(parseShortcutText("LeftCtrl + Shift + D")).toEqual({ keys: [0xa2, 0x10, 0x44] });
+    expect(parseShortcutText("Alt++").error).toContain("Plus");
+    expect(parseShortcutText("Ctrl+NoSuchKey").error).toContain("nosuchkey");
+  });
   it("keeps valid modifier-only input-method shortcuts valid", () => {
     expect(isLegacyIncompleteCodexShortcut([0xa2, 0x5b])).toBe(false);
     expect(isLegacyIncompleteCodexShortcut([0xa5])).toBe(false);
