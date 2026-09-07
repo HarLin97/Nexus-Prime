@@ -14,7 +14,8 @@
 
 - 前端测试 13 个文件、50/50 通过；包含文本 `Alt+F4` 解析、无效文本拦截和重置风险提示/后端返回配置。
 - Rust workspace 测试 130/130 通过；覆盖标准按键重置保留音量与语音、Alt 系统组合路由及既有语音回归。前端生产构建、Cargo workspace 全目标检查与 `git diff --check` 均通过。
-- 本地 NSIS 安装包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.1_x64-setup.exe`，13,339,714 bytes，SHA-256 `45146B9B7E30D4369BA4F762A4B63DDC09D2E6C39C063512F91A04F9C8CFC91F`；主程序文件与产品版本均为 `0.4.1`。未修改真实用户配置。GitHub 标签、Release、更新清单和公开下载验证将在 v0.4.1 发布流程完成后补充。
+- 本地 NSIS 安装包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.1_x64-setup.exe`，13,339,714 bytes，SHA-256 `45146B9B7E30D4369BA4F762A4B63DDC09D2E6C39C063512F91A04F9C8CFC91F`；主程序文件与产品版本均为 `0.4.1`。未修改真实用户配置。
+- 发布提交/标签为 `05e36b24135e6a83604f2528cc96eef654425b76` / `v0.4.1`。GitHub 正式 Release [`v0.4.1`](https://github.com/LightyearXizIl/Nexus-Prime/releases/tag/v0.4.1) 已公开；资产 `Nexus.Prime_0.4.1_x64-setup.exe` 状态为 `uploaded`、大小 13,339,714 bytes、GitHub 摘要 `sha256:45146b9b7e30d4369ba4f762a4b63ddc09d2e6c39c063512f91a04f9c8cfc91f`，与本地一致。Release `latest.json` 已上传，仓库 raw 清单为 v0.4.1；公开安装器下载返回 HTTP 200 与相同长度。
 
 ### 仍待真实设备验收
 
