@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "npm run test:gadget && vitest run",
+    "test:gadget": "node --test tests/xiaomi_hid_gadget.test.mjs",
     "test:watch": "vitest",
     "preview": "vite preview",
     "tauri": "tauri",
