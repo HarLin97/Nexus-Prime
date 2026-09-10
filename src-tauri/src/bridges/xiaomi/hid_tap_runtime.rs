@@ -471,6 +471,13 @@ fn windows_find_host_pid() -> Option<u32> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn gadget_config_reloads_script_changes() {
+        let config = super::gadget_config_text();
+        assert!(config.contains(r#""on_change": "reload""#));
+        assert!(!config.contains(r#""on_change": "ignore""#));
+    }
+
+    #[test]
     #[cfg(target_os = "windows")]
     fn find_rc003_host_pid_smoke() {
         let pid = super::find_rc003_hidogatt_host_pid()

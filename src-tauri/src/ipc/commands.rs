@@ -943,3 +943,19 @@ fn bridge_type_to_device(s: &str) -> Result<&str, String> {
         _ => Err(format!("未知设备类型: {}", s)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn restart_teardown_stops_hid_tap_before_worker() {
+        use std::cell::RefCell;
+
+        let order = RefCell::new(Vec::new());
+        super::run_restart_teardown(
+            || order.borrow_mut().push("hid_tap"),
+            || order.borrow_mut().push("worker"),
+        );
+
+        assert_eq!(*order.borrow(), ["hid_tap", "worker"]);
+    }
+}
