@@ -479,6 +479,7 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "windows")]
+    #[ignore = "requires a paired RC003 and live WUDFHost"]
     fn find_rc003_host_pid_smoke() {
         let pid = super::find_rc003_hidogatt_host_pid()
             .expect("RC003 HostPid must be found when remote is paired (check BTHLEDevice registry)");
