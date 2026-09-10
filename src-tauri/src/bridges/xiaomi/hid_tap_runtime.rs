@@ -119,7 +119,7 @@ pub fn secure_runtime_directory() -> PathBuf {
 
 fn gadget_config_text() -> String {
     format!(
-        "{{\n  \"interaction\": {{\n    \"type\": \"script\",\n    \"path\": \"{GADGET_SCRIPT_NAME}\",\n    \"parameters\": {{\n      \"host\": \"127.0.0.1\",\n      \"port\": {}\n    }},\n    \"on_change\": \"ignore\"\n  }},\n  \"runtime\": \"qjs\",\n  \"teardown\": \"minimal\"\n}}\n",
+        "{{\n  \"interaction\": {{\n    \"type\": \"script\",\n    \"path\": \"{GADGET_SCRIPT_NAME}\",\n    \"parameters\": {{\n      \"host\": \"127.0.0.1\",\n      \"port\": {}\n    }},\n    \"on_change\": \"reload\"\n  }},\n  \"runtime\": \"qjs\",\n  \"teardown\": \"minimal\"\n}}\n",
         hid_tap_port()
     )
 }
