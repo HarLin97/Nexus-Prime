@@ -3,7 +3,7 @@
 **Date:** 2026-09-10
 
 **Target version:** 0.4.2
-**Status:** Conversation design approved; written review pending
+**Status:** Approved for implementation
 
 ## Context
 
