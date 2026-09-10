@@ -35,6 +35,7 @@ export type KeyAction =
   | { type: "ComboKey"; value: number[] }
   | { type: "TextInput"; value: string }
   | { type: "LaunchApp"; value: string }
+  | { type: "FocusChatGpt"; value: null }
   | { type: "MouseClick"; value: null }
   | { type: "MouseMove"; value: MouseMoveValue }
   | { type: "None"; value: null };

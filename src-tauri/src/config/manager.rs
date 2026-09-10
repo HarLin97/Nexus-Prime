@@ -28,6 +28,8 @@ pub enum KeyAction {
     TextInput(String),
     /// 启动应用
     LaunchApp(String),
+    /// 启动或激活 ChatGPT 桌面版，并把输入焦点放到聊天输入框
+    FocusChatGpt,
     /// 鼠标左键点击
     MouseClick,
     /// 鼠标移动：dx/dy 为方向（-1/0/1），step 为每帧像素数，accelerate 为是否加速
@@ -1086,5 +1088,14 @@ mod tests {
         let json = serde_json::to_string(&combo).unwrap();
         let decoded: KeyAction = serde_json::from_str(&json).unwrap();
         assert_eq!(combo, decoded);
+
+        let focus = KeyAction::FocusChatGpt;
+        let json = serde_json::to_string(&focus).unwrap();
+        assert_eq!(json, r#"{"type":"FocusChatGpt"}"#);
+        assert_eq!(serde_json::from_str::<KeyAction>(&json).unwrap(), focus);
+        assert_eq!(
+            serde_json::from_str::<KeyAction>(r#"{"type":"FocusChatGpt","value":null}"#).unwrap(),
+            focus
+        );
     }
 }

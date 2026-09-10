@@ -16,8 +16,8 @@ export const IME_PRESETS: Record<ImePreset, ImePresetDefinition> = {
     shortcutVks: [0xa2, 0xa0, 0x44],
     voiceHotkey: ["leftctrl", "leftshift", "d"],
     triggerMode: "Hold",
-    applyHint: "已应用：语音键 = 左 Ctrl + 左 Shift + D，触发模式 = 按住",
-    logMessage: "设置建议：已快速应用 Codex 按住听写映射（左 Ctrl + 左 Shift + D）",
+    applyHint: "已应用：主页键打开并聚焦 ChatGPT；语音键 = 左 Ctrl + 左 Shift + D，按住",
+    logMessage: "设置建议：已应用 ChatGPT / Codex 预设（主页键聚焦输入框，语音键按住听写）",
   },
   wechat: {
     shortcutVks: [0xa2, 0x5b],
@@ -67,14 +67,18 @@ function shortcutAction(shortcutVks: readonly number[]): KeyAction {
 export function applyImePresetConfig(config: DeviceConfig, preset: ImePreset): DeviceConfig {
   const definition = IME_PRESETS[preset];
   const action = shortcutAction(definition.shortcutVks);
+  const buttonBindings: Record<string, KeyAction> = {
+    ...config.button_bindings,
+    mic: action,
+    voice: action,
+  };
+  if (preset === "codex") {
+    buttonBindings.home = { type: "FocusChatGpt", value: null };
+  }
 
   return normalizeVoiceShortcutConfig({
     ...config,
-    button_bindings: {
-      ...config.button_bindings,
-      mic: action,
-      voice: action,
-    },
+    button_bindings: buttonBindings,
     voice_hotkey: [...definition.voiceHotkey],
     voice_shortcut_enabled: true,
     trigger_mode: definition.triggerMode,

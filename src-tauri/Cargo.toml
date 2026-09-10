@@ -1,6 +1,6 @@
 [package]
 name = "nexus-prime"
-version = "0.4.1"
+version = "0.4.3"
 description = "Nexus Prime - voice remote bridge (Rust)"
 authors = ["Light year"]
 edition = "2021"
@@ -43,6 +43,7 @@ windows = { version = "0.58", features = [
     "Foundation_Collections",
     "Win32_UI_Input",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Accessibility",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
     "Win32_System_Threading",
