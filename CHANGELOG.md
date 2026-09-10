@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.4.2] - 2026-09-10
+
+### 修复
+
+- HID Tap Gadget 现在会保留 `STATUS_PENDING` 的读取请求，并依据 `IO_STATUS_BLOCK.Information` 在异步完成后恰好转发一次九字节 RC003 报告；新增 10ms 兜底扫描、状态块复用前冲刷、64 项上限和完成状态遥测，避免按几次后 TCP 心跳仍在但快捷键不再响应。
+- “重启按键桥接”和 ATVV 修复现在共用同一生命周期锁，依次完整停止 HID Tap 与 BLE worker，再创建新会话；原有 JSON 配置、按键映射、ATVV、音频与虚拟键盘行为保持不变。
+- 新生成的 Frida Gadget 配置使用 `on_change: reload`，后续脚本更新可以重新加载。
+
+### 升级说明
+
+- 从 0.4.1 覆盖安装后，首次需要手动关闭再开启一次 Windows 蓝牙，或重启 Windows，使已经加载旧 Gadget 的 WUDFHost 退出；应用不会自动结束 WUDFHost 或切换蓝牙。
+
 ## [0.4.1] - 2026-09-07
 
 ### 新增与修复
