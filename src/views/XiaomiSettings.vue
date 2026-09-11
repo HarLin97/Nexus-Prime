@@ -2595,6 +2595,7 @@ watch(
   transition: transform 120ms var(--ease-out), color 140ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 .voice-repair-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.voice-repair-button.voice-repair-close { width: 36px; }
 .voice-repair-button--primary { color: #fff; border-color: var(--primary); background: var(--primary); box-shadow: 0 5px 12px color-mix(in srgb, var(--primary) 24%, transparent); }
 .voice-repair-button--secondary { color: var(--text); border-color: var(--border); background: var(--surface-raised); box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent); }
 .voice-repair-button:active:not(:disabled) { transform: scale(.97); }

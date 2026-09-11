@@ -8,8 +8,8 @@
   "assets": [
     {
       "name": "Nexus.Prime_0.4.4_x64-setup.exe",
-      "size": 13360695,
-      "digest": "sha256:55f53778dfe88b7c46080c2097e12a1121e0d88325e476eeaae7dc2ab0cf0f54",
+      "size": 13356601,
+      "digest": "sha256:7e56747b1fed38f1d835dd61be2d05d6442acbfc8f62ec1555fb33805b7bc2eb",
       "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.4/Nexus.Prime_0.4.4_x64-setup.exe"
     }
   ]
