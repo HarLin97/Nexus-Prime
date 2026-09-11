@@ -131,6 +131,50 @@ describe("XiaomiSettings virtual keyboard repair", () => {
   });
 });
 
+describe("XiaomiSettings VB-CABLE repair dialog", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+    listen.mockClear();
+    i18n.global.locale.value = "zh-CN";
+  });
+
+  it("opens the choice dialog before invoking a sound-card repair", async () => {
+    const wrapper = await mountView();
+    await buttonByText(wrapper, "修复声卡").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("修复虚拟声卡");
+    expect(wrapper.text()).toContain("自动修复");
+    expect(invoke).not.toHaveBeenCalledWith("repair_xiaomi_voice_env", expect.anything());
+  });
+
+  it("uses the same official embedded installer command for automatic repair", async () => {
+    const wrapper = await mountView();
+    invoke.mockImplementation((command: string) => {
+      if (command === "repair_xiaomi_voice_env") {
+        return Promise.resolve({ ok: true, ready: true, needsReboot: false, message: "已就绪" });
+      }
+      if (command === "get_xiaomi_host_status") return Promise.resolve({ ...host });
+      return Promise.resolve(undefined);
+    });
+    await buttonByText(wrapper, "修复声卡").trigger("click");
+    await buttonByText(wrapper, "自动修复").trigger("click");
+    await flushPromises();
+
+    expect(invoke).toHaveBeenCalledWith("repair_xiaomi_voice_env", { source: "embedded" });
+    expect(invoke.mock.calls.filter(([command]) => command === "repair_xiaomi_voice_env")).toHaveLength(1);
+  });
+
+  it("switches between repair, guide, and FAQ tabs", async () => {
+    const wrapper = await mountView();
+    await buttonByText(wrapper, "修复声卡").trigger("click");
+    await buttonByText(wrapper, "安装说明").trigger("click");
+    expect(wrapper.text()).toContain("Windows 的管理员确认");
+    await buttonByText(wrapper, "常见问题").trigger("click");
+    expect(wrapper.text()).toContain("输入法无声音");
+  });
+});
+
 describe("XiaomiSettings injection health", () => {
   beforeEach(() => {
     invoke.mockReset();

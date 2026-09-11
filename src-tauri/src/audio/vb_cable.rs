@@ -1,13 +1,17 @@
-//! 小米语音环境：检测 VB-CABLE，并用内嵌驱动包 / 官网下载修复
+//! 小米语音环境：检测 VB-CABLE，并使用 VB-Audio 官方图形安装器修复。
 //!
-//! 安装逻辑复用 Python `configure-xiaomi-audio.ps1`（校验签名、提权安装、设默认麦）。
+//! 内嵌 ZIP 仍须通过固定 SHA-256 校验；PowerShell 仅用于在驱动端点就绪后
+//! 设定默认麦克风，绝不再承担正常应用流程中的驱动注册或安装。
 
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::copy;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use std::time::{Duration, Instant};
 
 pub const DRIVER_ZIP_NAME: &str = "VBCABLE_Driver_Pack45.zip";
@@ -50,9 +54,20 @@ impl VoiceEnvStatusCache {
     }
 }
 
-static VOICE_ENV_STATUS_CACHE: Mutex<VoiceEnvStatusCache> =
-    Mutex::new(VoiceEnvStatusCache::new());
+static VOICE_ENV_STATUS_CACHE: Mutex<VoiceEnvStatusCache> = Mutex::new(VoiceEnvStatusCache::new());
 static DRIVER_ZIP_CACHE: Mutex<Option<PathBuf>> = Mutex::new(None);
+static OFFICIAL_INSTALLER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+const OFFICIAL_STAGE_DIR_NAME: &str = "vb-cable-official-stage";
+const OFFICIAL_STAGE_MARKER: &str = ".zip.sha256";
+
+struct InstallerRunGuard;
+
+impl Drop for InstallerRunGuard {
+    fn drop(&mut self) {
+        OFFICIAL_INSTALLER_RUNNING.store(false, Ordering::Release);
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,6 +193,210 @@ pub fn find_configure_script() -> Option<PathBuf> {
     asset_candidates(CONFIGURE_SCRIPT_NAME)
         .into_iter()
         .find(|p| p.is_file())
+}
+
+fn official_setup_exe_name() -> &'static str {
+    if cfg!(target_pointer_width = "64") {
+        "VBCABLE_Setup_x64.exe"
+    } else {
+        "VBCABLE_Setup.exe"
+    }
+}
+
+fn official_setup_fallback_exe_name() -> &'static str {
+    if cfg!(target_pointer_width = "64") {
+        "VBCABLE_Setup.exe"
+    } else {
+        "VBCABLE_Setup_x64.exe"
+    }
+}
+
+fn app_data_root() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Nexus Prime")
+        .join("VB-CABLE")
+}
+
+fn find_named_file(root: &Path, name: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+        {
+            return Some(path);
+        }
+        if path.is_dir() {
+            if let Some(found) = find_named_file(&path, name) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn staged_setup_if_valid(stage: &Path, zip_hash: &str) -> Option<PathBuf> {
+    let marker = stage.join(OFFICIAL_STAGE_MARKER);
+    let marker_hash = std::fs::read_to_string(marker).ok()?;
+    if !marker_hash.trim().eq_ignore_ascii_case(zip_hash) {
+        return None;
+    }
+    find_named_file(stage, official_setup_exe_name())
+        .or_else(|| find_named_file(stage, official_setup_fallback_exe_name()))
+}
+
+fn extract_official_driver_zip(zip: &Path, destination: &Path) -> Result<(), String> {
+    let tar_status = Command::new("tar")
+        .args([
+            "-xf",
+            &zip.display().to_string(),
+            "-C",
+            &destination.display().to_string(),
+        ])
+        .status();
+    if matches!(tar_status, Ok(status) if status.success()) {
+        return Ok(());
+    }
+
+    // 仅用于解压已校验的本地 ZIP；不是驱动安装路径，且没有可见控制台窗口。
+    let script = format!(
+        "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+        zip.display().to_string().replace('\'', "''"),
+        destination.display().to_string().replace('\'', "''")
+    );
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .output()
+        .map_err(|error| format!("解压 VB-CABLE 官方包失败: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "解压 VB-CABLE 官方包失败: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+/// 将已验证的官方包解压至项目专属暂存目录。新内容始终先进入独立临时目录，
+/// 验证完整安装器后才原子替换旧暂存，任何失败都不会破坏可复用的有效内容。
+fn stage_official_setup(zip: &Path) -> Result<PathBuf, String> {
+    let zip_hash = sha256_file(zip)?;
+    if !zip_hash.eq_ignore_ascii_case(DRIVER_ZIP_SHA256) {
+        return Err("VB-CABLE 内嵌驱动包 SHA-256 校验失败".into());
+    }
+
+    let root = app_data_root();
+    std::fs::create_dir_all(&root)
+        .map_err(|error| format!("创建 VB-CABLE 暂存目录失败: {error}"))?;
+    let stage = root.join(OFFICIAL_STAGE_DIR_NAME);
+    if let Some(setup) = staged_setup_if_valid(&stage, &zip_hash) {
+        log::info!(
+            "reuse verified VB-CABLE official setup path={}",
+            setup.display()
+        );
+        return Ok(setup);
+    }
+
+    let pending = root.join(format!(
+        "{OFFICIAL_STAGE_DIR_NAME}.pending-{}",
+        std::process::id()
+    ));
+    if pending.exists() {
+        std::fs::remove_dir_all(&pending)
+            .map_err(|error| format!("清理旧的 VB-CABLE 临时暂存失败: {error}"))?;
+    }
+    std::fs::create_dir(&pending)
+        .map_err(|error| format!("创建 VB-CABLE 临时暂存失败: {error}"))?;
+
+    let staged_setup = (|| {
+        extract_official_driver_zip(zip, &pending)?;
+        let setup = find_named_file(&pending, official_setup_exe_name())
+            .or_else(|| find_named_file(&pending, official_setup_fallback_exe_name()))
+            .ok_or_else(|| "官方 VB-CABLE 包中未找到 Setup 安装器".to_string())?;
+        std::fs::write(pending.join(OFFICIAL_STAGE_MARKER), &zip_hash)
+            .map_err(|error| format!("写入 VB-CABLE 暂存校验标记失败: {error}"))?;
+        Ok::<PathBuf, String>(setup)
+    })();
+    if let Err(error) = staged_setup {
+        let _ = std::fs::remove_dir_all(&pending);
+        return Err(error);
+    }
+
+    if stage.exists() {
+        std::fs::remove_dir_all(&stage)
+            .map_err(|error| format!("替换过期 VB-CABLE 暂存失败: {error}"))?;
+    }
+    std::fs::rename(&pending, &stage)
+        .map_err(|error| format!("完成 VB-CABLE 安全暂存失败: {error}"))?;
+    staged_setup_if_valid(&stage, &zip_hash)
+        .ok_or_else(|| "VB-CABLE 暂存完成后无法验证官方安装器".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn launch_gui_exe_and_wait(exe: &Path) -> Result<u32, String> {
+    use windows::core::HSTRING;
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let file = HSTRING::from(exe.as_os_str());
+    let directory = HSTRING::from(exe.parent().unwrap_or_else(|| Path::new(".")).as_os_str());
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpFile: windows::core::PCWSTR(file.as_ptr()),
+        lpDirectory: windows::core::PCWSTR(directory.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    unsafe {
+        ShellExecuteExW(&mut info)
+            .map_err(|error| format!("启动 VB-CABLE 官方安装器失败: {error}"))?;
+        let process = info.hProcess;
+        if process.is_invalid() {
+            return Err("VB-CABLE 官方安装器未返回进程句柄".into());
+        }
+        let waited = WaitForSingleObject(process, INFINITE);
+        if waited != WAIT_OBJECT_0 {
+            let _ = CloseHandle(process);
+            return Err(format!("等待 VB-CABLE 官方安装器失败: {waited:?}"));
+        }
+        let mut exit_code = 0;
+        GetExitCodeProcess(process, &mut exit_code)
+            .map_err(|error| format!("读取 VB-CABLE 安装器退出码失败: {error}"))?;
+        let _ = CloseHandle(process);
+        Ok(exit_code)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn launch_gui_exe_and_wait(_exe: &Path) -> Result<u32, String> {
+    Err("仅 Windows 支持 VB-CABLE 官方安装器".into())
+}
+
+fn installer_result_code(exit_code: u32, ready: bool) -> &'static str {
+    if exit_code == 3010 || exit_code == 1641 {
+        "voice_env.reboot_required"
+    } else if exit_code != 0 {
+        "voice_env.installer_failed"
+    } else if ready {
+        "voice_env.ready"
+    } else {
+        "voice_env.incomplete"
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -358,7 +577,8 @@ fn app_path_for_script() -> PathBuf {
 
 fn run_configure_script(mode: &str, zip: &Path) -> Result<VoiceEnvActionResult, String> {
     invalidate_voice_env_status_cache();
-    let script = find_configure_script().ok_or_else(|| "未找到 configure-xiaomi-audio.ps1".to_string())?;
+    let script =
+        find_configure_script().ok_or_else(|| "未找到 configure-xiaomi-audio.ps1".to_string())?;
     let app_path = app_path_for_script();
     log::info!(
         "XIAOMI VOICE ENV: run script mode={mode} zip={} app={}",
@@ -395,7 +615,9 @@ fn run_configure_script(mode: &str, zip: &Path) -> Result<VoiceEnvActionResult, 
     // 脚本多数情况 exit 0，结果写在桌面报告里
     let report = desktop_report_path();
     let report_text = std::fs::read_to_string(&report).unwrap_or_default();
-    let needs_reboot = report_text.to_ascii_lowercase().contains("restart required")
+    let needs_reboot = report_text
+        .to_ascii_lowercase()
+        .contains("restart required")
         || report_text.contains("需要重启")
         || output.status.code() == Some(3010);
     let warning = report_text
@@ -445,7 +667,14 @@ fn run_configure_script(mode: &str, zip: &Path) -> Result<VoiceEnvActionResult, 
         ready,
         needs_choice: false,
         needs_reboot,
-        result_code: if ready { "voice_env.ready" } else if needs_reboot { "voice_env.reboot_required" } else { "voice_env.incomplete" }.into(),
+        result_code: if ready {
+            "voice_env.ready"
+        } else if needs_reboot {
+            "voice_env.reboot_required"
+        } else {
+            "voice_env.incomplete"
+        }
+        .into(),
         message,
         report_path: if report.is_file() {
             Some(report.display().to_string())
@@ -455,12 +684,102 @@ fn run_configure_script(mode: &str, zip: &Path) -> Result<VoiceEnvActionResult, 
     })
 }
 
-/// 检测；若已就绪则直接 Repair（设默认麦）；若未就绪则返回 needs_choice
+/// 启动 VB-Audio 官方完整安装器并在结束后重新探测端点。
+fn run_official_setup_installer() -> Result<VoiceEnvActionResult, String> {
+    if OFFICIAL_INSTALLER_RUNNING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Ok(VoiceEnvActionResult {
+            ok: false,
+            ready: false,
+            needs_choice: false,
+            needs_reboot: false,
+            result_code: "voice_env.repair_in_progress".into(),
+            message: "VB-CABLE 官方安装器正在运行，请完成或关闭后再试。".into(),
+            report_path: None,
+        });
+    }
+    let _running_guard = InstallerRunGuard;
+    let zip = find_driver_zip().ok_or_else(|| "内嵌 VB-CABLE 驱动包不可用".to_string())?;
+    let setup = stage_official_setup(&zip)?;
+    log::info!("launch VB-CABLE official setup path={}", setup.display());
+    let exit_code = match launch_gui_exe_and_wait(&setup) {
+        Ok(code) => code,
+        Err(error)
+            if error.contains("1223")
+                || error.to_ascii_lowercase().contains("704c7")
+                || error.to_ascii_lowercase().contains("cancelled") =>
+        {
+            return Ok(VoiceEnvActionResult {
+                ok: false,
+                ready: false,
+                needs_choice: false,
+                needs_reboot: false,
+                result_code: "voice_env.install_cancelled".into(),
+                message: "已取消 Windows 管理员确认；未执行驱动安装，可随时重新尝试。".into(),
+                report_path: None,
+            });
+        }
+        Err(error) => return Err(error),
+    };
+
+    invalidate_voice_env_status_cache();
+    let mut endpoints = (false, false);
+    for _ in 0..20 {
+        match probe_cable_endpoints() {
+            Ok(found) => {
+                endpoints = found;
+                if found.0 && found.1 {
+                    break;
+                }
+            }
+            Err(error) => log::warn!("VB-CABLE post-install endpoint probe failed: {error}"),
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    // 将最终结果写回缓存，避免安装前的缺失状态覆盖刚安装的端点。
+    lock_voice_env_status_cache().store(Instant::now(), endpoints);
+    let ready = endpoints.0 && endpoints.1;
+    let needs_reboot = exit_code == 3010 || exit_code == 1641 || !ready;
+
+    let mic_message = if ready {
+        match run_configure_script("EnsureMic", &zip) {
+            Ok(result) if result.ok || result.ready => String::new(),
+            Ok(result) => format!("；默认麦克风未能自动校正：{}", result.message),
+            Err(error) => format!("；默认麦克风未能自动校正：{error}"),
+        }
+    } else {
+        String::new()
+    };
+    let message = if exit_code == 3010 || exit_code == 1641 {
+        format!(
+            "VB-CABLE 官方安装器已完成（退出码 {exit_code}），请先重启 Windows；重启后重新打开 Nexus Prime 并点击「自动修复」。{mic_message}"
+        )
+    } else if exit_code != 0 {
+        format!("VB-CABLE 官方安装器以退出码 {exit_code} 结束。请重试安装，或查看安装器提示。")
+    } else if ready {
+        format!("VB-CABLE 官方安装器已完成，已检测到 CABLE Input/Output，并已尝试设为 CABLE Output 默认麦克风。{mic_message}")
+    } else {
+        "VB-CABLE 官方安装器已关闭，但 10 秒内未检测到 CABLE Input/Output。请重启 Windows 后重新打开 Nexus Prime 并点击「自动修复」。".into()
+    };
+    Ok(VoiceEnvActionResult {
+        ok: exit_code == 0 && ready,
+        ready,
+        needs_choice: false,
+        needs_reboot,
+        result_code: installer_result_code(exit_code, ready).into(),
+        message,
+        report_path: None,
+    })
+}
+
+/// 检测；已就绪时只校正默认麦克风，未就绪时由界面展示修复选择。
 pub fn check_or_prompt() -> VoiceEnvActionResult {
     let status = voice_env_status();
     if status.ready {
         match find_driver_zip() {
-            Some(zip) => match run_configure_script("Repair", &zip) {
+            Some(zip) => match run_configure_script("EnsureMic", &zip) {
                 Ok(mut r) => {
                     r.needs_choice = false;
                     r
@@ -499,8 +818,7 @@ pub fn check_or_prompt() -> VoiceEnvActionResult {
 }
 
 pub fn install_embedded() -> Result<VoiceEnvActionResult, String> {
-    let zip = find_driver_zip().ok_or_else(|| "内嵌 VB-CABLE 驱动包不可用".to_string())?;
-    run_configure_script("Repair", &zip)
+    run_official_setup_installer()
 }
 
 pub fn open_download_page() -> Result<VoiceEnvActionResult, String> {
@@ -579,15 +897,10 @@ mod tests {
         let mut cache = VoiceEnvStatusCache::new();
         let calls = Cell::new(0);
 
-        let first = cached_probe_with(
-            &mut cache,
-            started,
-            VOICE_ENV_STATUS_CACHE_TTL,
-            || {
-                calls.set(calls.get() + 1);
-                Err("temporary COM error".into())
-            },
-        );
+        let first = cached_probe_with(&mut cache, started, VOICE_ENV_STATUS_CACHE_TTL, || {
+            calls.set(calls.get() + 1);
+            Err("temporary COM error".into())
+        });
         assert!(first.is_err());
         assert_eq!(cache.latest(), None);
 
@@ -605,20 +918,47 @@ mod tests {
     }
 
     #[test]
+    fn official_installer_prefers_architecture_matching_setup_name() {
+        let expected = if cfg!(target_pointer_width = "64") {
+            "VBCABLE_Setup_x64.exe"
+        } else {
+            "VBCABLE_Setup.exe"
+        };
+        assert_eq!(official_setup_exe_name(), expected);
+        assert_ne!(
+            official_setup_exe_name(),
+            official_setup_fallback_exe_name()
+        );
+    }
+
+    #[test]
+    fn installer_exit_codes_keep_reboot_and_failure_distinct() {
+        assert_eq!(installer_result_code(0, true), "voice_env.ready");
+        assert_eq!(installer_result_code(0, false), "voice_env.incomplete");
+        assert_eq!(
+            installer_result_code(3010, false),
+            "voice_env.reboot_required"
+        );
+        assert_eq!(
+            installer_result_code(1641, false),
+            "voice_env.reboot_required"
+        );
+        assert_eq!(
+            installer_result_code(1, false),
+            "voice_env.installer_failed"
+        );
+    }
+
+    #[test]
     fn successful_missing_result_is_cached_until_ttl_expires() {
         let started = Instant::now();
         let mut cache = VoiceEnvStatusCache::new();
         let calls = Cell::new(0);
 
-        let first = cached_probe_with(
-            &mut cache,
-            started,
-            VOICE_ENV_STATUS_CACHE_TTL,
-            || {
-                calls.set(calls.get() + 1);
-                Ok((false, false))
-            },
-        );
+        let first = cached_probe_with(&mut cache, started, VOICE_ENV_STATUS_CACHE_TTL, || {
+            calls.set(calls.get() + 1);
+            Ok((false, false))
+        });
         assert_eq!(first.unwrap(), (false, false));
 
         let stored_at = cache.entry.unwrap().0;
@@ -662,8 +1002,7 @@ mod tests {
         });
         assert_eq!(found.as_deref(), Some(path.as_path()));
         assert_eq!(
-            cached_driver_zip_with(&cache, || panic!("cached path should be reused"))
-                .as_deref(),
+            cached_driver_zip_with(&cache, || panic!("cached path should be reused")).as_deref(),
             Some(path.as_path())
         );
         assert_eq!(calls.get(), 2);

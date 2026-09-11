@@ -1,16 +1,16 @@
 {
-  "tag_name": "v0.4.2",
-  "name": "Nexus Prime v0.4.2",
-  "body": "- PR #7：修复 RC003 HID Tap 的异步完成与桥接重启可靠性。\n- PR #8：ChatGPT / Codex 预设新增主页键聚焦动作。\n- Issue #6：RC003 TV 键不再向中文输入法输出「·」或向英文输入框输出反引号。",
+  "tag_name": "v0.4.3",
+  "name": "Nexus Prime v0.4.3",
+  "body": "- 虚拟声卡自动修复改用 VB-Audio Pack45 的完整官方图形安装器，并保留 ZIP SHA-256 校验与安全暂存。\n- 安装器支持 UAC 取消、重启结果和端点重探；端点就绪后只校正默认麦克风为 CABLE Output。\n- 修复声卡入口升级为修复、安装说明和常见问题三页签，保留官方下载与取消下载。",
   "published_at": null,
   "draft": false,
   "prerelease": false,
   "assets": [
     {
-      "name": "Nexus.Prime_0.4.2_x64-setup.exe",
-      "size": 13350889,
-      "digest": "sha256:e1430d75d52c7eb5c6bdcd4432076018943e1a6a18e1ffc95176084e86c587bb",
-      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.2/Nexus.Prime_0.4.2_x64-setup.exe"
+      "name": "Nexus.Prime_0.4.3_x64-setup.exe",
+      "size": 13360977,
+      "digest": "sha256:fa2a0aa94c3910c7f21bf88617e1b506ef3f4d05bdf2f835ce1e1496710418b9",
+      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.3/Nexus.Prime_0.4.3_x64-setup.exe"
     }
   ]
 }

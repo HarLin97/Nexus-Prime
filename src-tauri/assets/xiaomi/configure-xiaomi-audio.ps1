@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [ValidateSet("Install", "InstallElevated", "Finish", "Repair", "Restore", "Audit")]
+  [ValidateSet("Install", "InstallElevated", "Finish", "Repair", "EnsureMic", "Restore", "Audit")]
   [string] $Mode = "Install",
   [Parameter(Mandatory = $true)]
   [string] $AppPath,
@@ -197,6 +197,11 @@ try {
     "Repair" {
       if (-not (Test-VBCableReady)) { Invoke-ElevatedInstall }
       if (Wait-VBCable 45) { Set-DefaultCableMicrophone } else { Set-FinishRunOnce; $result = "Driver installed; Windows restart required" }
+    }
+    "EnsureMic" {
+      if (-not (Test-VBCableReady)) { throw "VB-CABLE is not ready" }
+      Set-DefaultCableMicrophone
+      $result = "Default microphone set to CABLE Output"
     }
     "Restore" {
       if (Test-Path -LiteralPath $PreviousMicFile) { Initialize-AudioEndpointApi; $id=(Get-Content -LiteralPath $PreviousMicFile -Raw -Encoding UTF8).Trim(); if($id){[XiaomiAudioEndpoint]::SetDefaultCapture($id)}; Remove-Item -LiteralPath $PreviousMicFile -Force }

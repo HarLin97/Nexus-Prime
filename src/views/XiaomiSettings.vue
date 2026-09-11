@@ -60,6 +60,7 @@ const repairBusy = computed(
 );
 const showVoiceChoice = ref(false);
 const voiceChoiceMsg = ref("");
+const voiceRepairTab = ref<"repair" | "guide" | "faq">("repair");
 const cableDownloadPhase = ref<"idle" | "downloading" | "complete" | "error">("idle");
 const cableDownloadProgress = ref<number | null>(null);
 const cableDownloadMessage = ref("");
@@ -949,31 +950,11 @@ interface VoiceEnvActionResult {
   resultCode?: string;
 }
 
-async function voiceDetectAndRepair() {
+function openVoiceRepairChoice() {
   if (repairBusy.value) return;
-  voiceRepairing.value = true;
-  showVoiceChoice.value = false;
-  try {
-    const result = await invoke<VoiceEnvActionResult>("check_xiaomi_voice_env");
-    if (result.needsChoice) {
-      voiceChoiceMsg.value = result.message;
-      showVoiceChoice.value = true;
-      return;
-    }
-    host.value = {
-      ...host.value,
-      detail: result.message,
-      tone: result.ready ? "ok" : result.needsReboot ? "warn" : "error",
-    };
-    prependLog(result.message);
-    await refreshHost();
-  } catch (e) {
-    const msg = `虚拟声卡检测失败: ${e}`;
-    prependLog(msg);
-    host.value = { ...host.value, detail: msg, tone: "error" };
-  } finally {
-    voiceRepairing.value = false;
-  }
+  voiceRepairTab.value = "repair";
+  voiceChoiceMsg.value = "自动修复会打开 VB-Audio 官方安装界面，并可能显示 Windows 管理员确认（UAC）。";
+  showVoiceChoice.value = true;
 }
 
 async function chooseVoiceSource(source: "embedded" | "download_page") {
@@ -991,13 +972,27 @@ async function chooseVoiceSource(source: "embedded" | "download_page") {
     };
     prependLog(result.message);
     await refreshHost();
+    if (result.needsReboot || !result.ok) {
+      voiceChoiceMsg.value = result.needsReboot
+        ? `${result.message} 下一步：重启 Windows，重新打开 Nexus Prime 后点击“自动修复”。`
+        : `${result.message} 可检查官方安装器提示后再次尝试。`;
+      voiceRepairTab.value = "repair";
+      showVoiceChoice.value = true;
+    }
   } catch (e) {
     const msg = `语音修复失败: ${e}`;
     prependLog(msg);
     host.value = { ...host.value, detail: msg, tone: "error" };
+    voiceChoiceMsg.value = `${msg}。可检查 UAC 或关闭的官方安装器后重试。`;
+    voiceRepairTab.value = "repair";
+    showVoiceChoice.value = true;
   } finally {
     voiceRepairing.value = false;
   }
+}
+
+async function runVoiceAutoRepair() {
+  await chooseVoiceSource("embedded");
 }
 
 async function startCableZipDownload() {
@@ -1363,7 +1358,7 @@ watch(
                 class="btn btn-secondary"
                 type="button"
                 :disabled="repairBusy"
-                @click="voiceDetectAndRepair"
+                @click="openVoiceRepairChoice"
               >
                 {{ voiceRepairing ? t("common.processing") : t("dashboard.repairAudioShort") }}
               </button>
@@ -1674,52 +1669,41 @@ watch(
         </div>
       </div>
       <div v-if="showVoiceChoice" class="voice-modal-backdrop" @click.self="showVoiceChoice = false">
-        <div class="voice-modal" role="dialog" aria-modal="true">
-          <h3>未检测到 VB-CABLE</h3>
-          <p>{{ voiceChoiceMsg || "请选择安装方式：" }}</p>
-          <div class="voice-modal-actions">
-            <button
-              class="btn btn-primary"
-              type="button"
-              :disabled="voiceRepairing"
-              @click="chooseVoiceSource('embedded')"
-            >
-              使用内嵌驱动安装
-            </button>
-            <button
-              class="btn btn-secondary"
-              type="button"
-              :disabled="cableDownloadPhase === 'downloading'"
-              @click="startCableZipDownload"
-            >
-              {{ cableDownloadPhase === "error" ? "重试下载官方驱动包" : "下载官方驱动包" }}
-            </button>
-            <button
-              v-if="cableDownloadPhase === 'downloading'"
-              class="btn btn-secondary"
-              type="button"
-              @click="cancelCableZipDownload"
-            >
-              停止下载
-            </button>
-            <button
-              class="btn btn-secondary"
-              type="button"
-              :disabled="voiceRepairing"
-              @click="chooseVoiceSource('download_page')"
-            >
-              打开官网说明
-            </button>
-            <button class="btn btn-secondary" type="button" @click="showVoiceChoice = false">
-              取消
-            </button>
+        <div class="voice-modal voice-repair-modal" role="dialog" aria-modal="true" aria-labelledby="voice-repair-title">
+          <h3 id="voice-repair-title">修复虚拟声卡</h3>
+          <div class="voice-repair-tabs" role="tablist" aria-label="虚拟声卡帮助">
+            <button :class="['voice-repair-tab', { active: voiceRepairTab === 'repair' }]" type="button" role="tab" :aria-selected="voiceRepairTab === 'repair'" @click="voiceRepairTab = 'repair'">修复</button>
+            <button :class="['voice-repair-tab', { active: voiceRepairTab === 'guide' }]" type="button" role="tab" :aria-selected="voiceRepairTab === 'guide'" @click="voiceRepairTab = 'guide'">安装说明</button>
+            <button :class="['voice-repair-tab', { active: voiceRepairTab === 'faq' }]" type="button" role="tab" :aria-selected="voiceRepairTab === 'faq'" @click="voiceRepairTab = 'faq'">常见问题</button>
           </div>
-          <p v-if="cableDownloadMessage" class="voice-modal-download" aria-live="polite">
-            {{ cableDownloadMessage }}
-          </p>
-          <p class="voice-modal-note">
-            内嵌包安装与签名检查保持不变。官方下载完成后不会自动安装或提权；请手动解压安装。官网也提供 Donationware/分发说明。
-          </p>
+          <section v-if="voiceRepairTab === 'repair'" class="voice-repair-panel" role="tabpanel">
+            <p>{{ voiceChoiceMsg }}</p>
+            <div class="voice-modal-actions">
+              <button class="btn btn-primary" type="button" :disabled="voiceRepairing" @click="runVoiceAutoRepair">
+                {{ voiceRepairing ? "正在等待官方安装器…" : "自动修复" }}
+              </button>
+              <button class="btn btn-secondary" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('embedded')">
+                使用内置官方驱动
+              </button>
+              <button class="btn btn-secondary" type="button" :disabled="cableDownloadPhase === 'downloading'" @click="startCableZipDownload">
+                {{ cableDownloadPhase === "error" ? "重试下载官方驱动包" : "下载官方驱动包" }}
+              </button>
+              <button v-if="cableDownloadPhase === 'downloading'" class="btn btn-secondary" type="button" @click="cancelCableZipDownload">停止下载</button>
+              <button class="btn btn-secondary" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('download_page')">打开官网</button>
+              <button class="btn btn-secondary" type="button" :disabled="voiceRepairing" @click="showVoiceChoice = false">取消</button>
+            </div>
+            <p v-if="cableDownloadMessage" class="voice-modal-download" aria-live="polite">{{ cableDownloadMessage }}</p>
+            <p class="voice-modal-note">自动修复和内置驱动都会打开 VB-Audio 官方安装界面及 UAC。若提示需要重启，请重启 Windows 后重新打开本应用并再点一次自动修复。</p>
+          </section>
+          <section v-else-if="voiceRepairTab === 'guide'" class="voice-repair-panel" role="tabpanel">
+            <p>选择“自动修复”或“使用内置官方驱动”后，请在 VB-Audio 官方安装窗口中完成安装，并按 Windows 的管理员确认继续。</p>
+            <p>安装结束后应用会重新检测 CABLE Input 与 CABLE Output，并尝试把默认录音设备设为 CABLE Output。若安装器或应用要求重启，请先重启再检测。</p>
+          </section>
+          <section v-else class="voice-repair-panel" role="tabpanel">
+            <p><strong>安装器被取消：</strong>再次点自动修复并在 UAC 中选择“是”。</p>
+            <p><strong>安装后仍未识别：</strong>重启 Windows；如仍无效，在设备管理器移除重复的 VB-CABLE 设备后重新安装。</p>
+            <p><strong>输入法无声音：</strong>输入法或语音软件应监听 CABLE Output；不要把日常扬声器设成 CABLE Input。</p>
+          </section>
         </div>
       </div>
 
@@ -2464,6 +2448,31 @@ watch(
   color: var(--text-secondary) !important;
 }
 .voice-modal-download { margin-top: 14px !important; margin-bottom: 0 !important; color: var(--text) !important; }
+.voice-repair-modal { width: min(500px, 100%); }
+.voice-repair-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.voice-repair-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.voice-repair-tab.active { color: var(--text); background: var(--surface-raised); box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent); }
+.voice-repair-tab:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 1px; }
+.voice-repair-panel > p:last-child { margin-bottom: 0; }
 
 .log-modal {
   width: min(720px, 100%);
