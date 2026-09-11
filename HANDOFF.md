@@ -6,7 +6,8 @@
 
 - 虚拟声卡修复弹窗已采用输入法设置弹窗相同的标题区、居中胶囊页签、右上角关闭按钮、双栏面板、主次按钮、主题变量和窄屏响应式布局；未改动 VB-CABLE 安装、下载、取消或端点校正流程。
 - 自动化：Gadget 9/9、前端 55/55、前端生产构建和 `git diff --check` 通过。发布前仍不把真实 Windows 驱动、UAC、重复设备或遥控器验收表述为已完成。
-- 本地 NSIS 包已重建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.4_x64-setup.exe`，13,360,695 bytes，SHA-256 `55F53778DFE88B7C46080C2097E12A1121E0D88325E476EEAAE7DC2AB0CF0F54`；应用与安装包产品版本均为 `0.4.4`。`latest.json` 已同步该名称、大小与摘要，待 Release 发布后回填远端核验。
+- 本地 NSIS 包已重建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.4_x64-setup.exe`，13,360,695 bytes，SHA-256 `55F53778DFE88B7C46080C2097E12A1121E0D88325E476EEAAE7DC2AB0CF0F54`；应用与安装包产品版本均为 `0.4.4`。发布提交/标签为 `4e9b9afd9ea92a793aeaa9358307c1aefbcfd276` / `v0.4.4`。
+- GitHub 正式 Release [`v0.4.4`](https://github.com/LightyearXizIl/Nexus-Prime/releases/tag/v0.4.4) 已公开。资产 `Nexus.Prime_0.4.4_x64-setup.exe` 状态为 `uploaded`，大小 13,360,695 bytes，GitHub 摘要 `sha256:55f53778dfe88b7c46080c2097e12a1121e0d88325e476eeaae7dc2ab0cf0f54`，与本地一致；Release `latest.json` 与 `main/latest.json` 均已读取并确认包含 v0.4.4 安装包元数据。公开下载链接返回 GitHub 资产跳转 `302`。
 
 ## v0.4.3：VB-CABLE 官方安装器修复（2026-09-11）
 
