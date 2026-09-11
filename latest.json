@@ -1,16 +1,16 @@
 {
-  "tag_name": "v0.4.3",
-  "name": "Nexus Prime v0.4.3",
-  "body": "- 虚拟声卡自动修复改用 VB-Audio Pack45 的完整官方图形安装器，并保留 ZIP SHA-256 校验与安全暂存。\n- 安装器支持 UAC 取消、重启结果和端点重探；端点就绪后只校正默认麦克风为 CABLE Output。\n- 修复声卡入口升级为修复、安装说明和常见问题三页签，保留官方下载与取消下载。",
+  "tag_name": "v0.4.4",
+  "name": "Nexus Prime v0.4.4",
+  "body": "- 虚拟声卡修复弹窗现与输入法设置使用同一套标题区、胶囊页签、双栏面板、主题变量和响应式布局。\n- 自动修复、内置官方驱动、官网下载、取消下载及端点校正行为保持不变。",
   "published_at": null,
   "draft": false,
   "prerelease": false,
   "assets": [
     {
-      "name": "Nexus.Prime_0.4.3_x64-setup.exe",
-      "size": 13360977,
-      "digest": "sha256:fa2a0aa94c3910c7f21bf88617e1b506ef3f4d05bdf2f835ce1e1496710418b9",
-      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.3/Nexus.Prime_0.4.3_x64-setup.exe"
+      "name": "Nexus.Prime_0.4.4_x64-setup.exe",
+      "size": 13360695,
+      "digest": "sha256:55f53778dfe88b7c46080c2097e12a1121e0d88325e476eeaae7dc2ab0cf0f54",
+      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.4/Nexus.Prime_0.4.4_x64-setup.exe"
     }
   ]
 }

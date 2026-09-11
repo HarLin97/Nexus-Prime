@@ -2,6 +2,12 @@
 
 更新时间：2026-09-11
 
+## v0.4.4：虚拟声卡弹窗与输入法设置统一（2026-09-11）
+
+- 虚拟声卡修复弹窗已采用输入法设置弹窗相同的标题区、居中胶囊页签、右上角关闭按钮、双栏面板、主次按钮、主题变量和窄屏响应式布局；未改动 VB-CABLE 安装、下载、取消或端点校正流程。
+- 自动化：Gadget 9/9、前端 55/55、前端生产构建和 `git diff --check` 通过。发布前仍不把真实 Windows 驱动、UAC、重复设备或遥控器验收表述为已完成。
+- 本地 NSIS 包已重建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.4_x64-setup.exe`，13,360,695 bytes，SHA-256 `55F53778DFE88B7C46080C2097E12A1121E0D88325E476EEAAE7DC2AB0CF0F54`；应用与安装包产品版本均为 `0.4.4`。`latest.json` 已同步该名称、大小与摘要，待 Release 发布后回填远端核验。
+
 ## v0.4.3：VB-CABLE 官方安装器修复（2026-09-11）
 
 - 选择性同步 `mwlt/Voice_VibeCoding@679e654` 的虚拟声卡安装行为：内嵌 Pack45 ZIP 保留固定 SHA-256 校验，解压至 `%LOCALAPPDATA%\\Nexus Prime\\VB-CABLE` 下的带散列标记暂存目录；只有临时内容已找到完整官方 Setup 后才替换旧暂存，失败不破坏可复用的有效暂存。

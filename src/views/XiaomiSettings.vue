@@ -1669,42 +1669,76 @@ watch(
         </div>
       </div>
       <div v-if="showVoiceChoice" class="voice-modal-backdrop" @click.self="showVoiceChoice = false">
-        <div class="voice-modal voice-repair-modal" role="dialog" aria-modal="true" aria-labelledby="voice-repair-title">
-          <h3 id="voice-repair-title">修复虚拟声卡</h3>
-          <div class="voice-repair-tabs" role="tablist" aria-label="虚拟声卡帮助">
-            <button :class="['voice-repair-tab', { active: voiceRepairTab === 'repair' }]" type="button" role="tab" :aria-selected="voiceRepairTab === 'repair'" @click="voiceRepairTab = 'repair'">修复</button>
-            <button :class="['voice-repair-tab', { active: voiceRepairTab === 'guide' }]" type="button" role="tab" :aria-selected="voiceRepairTab === 'guide'" @click="voiceRepairTab = 'guide'">安装说明</button>
-            <button :class="['voice-repair-tab', { active: voiceRepairTab === 'faq' }]" type="button" role="tab" :aria-selected="voiceRepairTab === 'faq'" @click="voiceRepairTab = 'faq'">常见问题</button>
-          </div>
-          <section v-if="voiceRepairTab === 'repair'" class="voice-repair-panel" role="tabpanel">
-            <p>{{ voiceChoiceMsg }}</p>
-            <div class="voice-modal-actions">
-              <button class="btn btn-primary" type="button" :disabled="voiceRepairing" @click="runVoiceAutoRepair">
-                {{ voiceRepairing ? "正在等待官方安装器…" : "自动修复" }}
-              </button>
-              <button class="btn btn-secondary" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('embedded')">
-                使用内置官方驱动
-              </button>
-              <button class="btn btn-secondary" type="button" :disabled="cableDownloadPhase === 'downloading'" @click="startCableZipDownload">
-                {{ cableDownloadPhase === "error" ? "重试下载官方驱动包" : "下载官方驱动包" }}
-              </button>
-              <button v-if="cableDownloadPhase === 'downloading'" class="btn btn-secondary" type="button" @click="cancelCableZipDownload">停止下载</button>
-              <button class="btn btn-secondary" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('download_page')">打开官网</button>
-              <button class="btn btn-secondary" type="button" :disabled="voiceRepairing" @click="showVoiceChoice = false">取消</button>
+        <section class="voice-repair-modal" role="dialog" aria-modal="true" aria-labelledby="voice-repair-title" :aria-busy="voiceRepairing">
+          <header class="voice-repair-head">
+            <div class="voice-repair-title-block">
+              <h3 id="voice-repair-title">虚拟声卡修复</h3>
+              <p>为遥控器语音路由准备 VB-CABLE，并校正默认录音设备。</p>
             </div>
-            <p v-if="cableDownloadMessage" class="voice-modal-download" aria-live="polite">{{ cableDownloadMessage }}</p>
-            <p class="voice-modal-note">自动修复和内置驱动都会打开 VB-Audio 官方安装界面及 UAC。若提示需要重启，请重启 Windows 后重新打开本应用并再点一次自动修复。</p>
+            <div class="voice-repair-tabs" role="tablist" aria-label="虚拟声卡帮助">
+              <button :class="{ active: voiceRepairTab === 'repair' }" type="button" role="tab" :aria-selected="voiceRepairTab === 'repair'" :tabindex="voiceRepairTab === 'repair' ? 0 : -1" @click="voiceRepairTab = 'repair'">修复</button>
+              <button :class="{ active: voiceRepairTab === 'guide' }" type="button" role="tab" :aria-selected="voiceRepairTab === 'guide'" :tabindex="voiceRepairTab === 'guide' ? 0 : -1" @click="voiceRepairTab = 'guide'">安装说明</button>
+              <button :class="{ active: voiceRepairTab === 'faq' }" type="button" role="tab" :aria-selected="voiceRepairTab === 'faq'" :tabindex="voiceRepairTab === 'faq' ? 0 : -1" @click="voiceRepairTab = 'faq'">常见问题</button>
+            </div>
+            <button class="voice-repair-button voice-repair-button--secondary voice-repair-close" type="button" aria-label="关闭虚拟声卡修复" :disabled="voiceRepairing" @click="showVoiceChoice = false">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" /></svg>
+            </button>
+          </header>
+
+          <section v-if="voiceRepairTab === 'repair'" class="voice-repair-panel" role="tabpanel">
+            <div class="voice-repair-copy">
+              <span class="voice-repair-eyebrow">VB-Audio Pack45 · 官方安装器</span>
+              <h4>先打开官方安装界面，再自动完成检测</h4>
+              <p>{{ voiceChoiceMsg }}</p>
+              <p class="voice-repair-detail">应用会校验内置包、打开官方安装器并等待结束。检测到 CABLE Input 与 CABLE Output 后，才会尝试把默认麦克风设为 CABLE Output。</p>
+            </div>
+            <aside class="voice-repair-action voice-repair-callout">
+              <span class="voice-repair-status">推荐</span>
+              <strong>自动修复</strong>
+              <p>会显示 VB-Audio 官方安装界面及 Windows 管理员确认。</p>
+              <button class="voice-repair-button voice-repair-button--primary" type="button" :disabled="voiceRepairing" @click="runVoiceAutoRepair">
+                <span>{{ voiceRepairing ? "正在等待官方安装器…" : "开始自动修复" }}</span>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5" /></svg>
+              </button>
+              <button class="voice-repair-button voice-repair-button--secondary" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('embedded')">使用内置官方驱动</button>
+              <button class="voice-repair-button voice-repair-button--secondary" type="button" :disabled="cableDownloadPhase === 'downloading'" @click="startCableZipDownload">{{ cableDownloadPhase === "error" ? "重试下载官方驱动包" : "下载官方驱动包" }}</button>
+              <button v-if="cableDownloadPhase === 'downloading'" class="voice-repair-button voice-repair-button--secondary" type="button" @click="cancelCableZipDownload">停止下载</button>
+              <button class="voice-repair-link" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('download_page')">打开 VB-Audio 官网</button>
+              <span v-if="cableDownloadMessage" class="voice-repair-hint" aria-live="polite">{{ cableDownloadMessage }}</span>
+            </aside>
           </section>
+
           <section v-else-if="voiceRepairTab === 'guide'" class="voice-repair-panel" role="tabpanel">
-            <p>选择“自动修复”或“使用内置官方驱动”后，请在 VB-Audio 官方安装窗口中完成安装，并按 Windows 的管理员确认继续。</p>
-            <p>安装结束后应用会重新检测 CABLE Input 与 CABLE Output，并尝试把默认录音设备设为 CABLE Output。若安装器或应用要求重启，请先重启再检测。</p>
+            <div class="voice-repair-copy">
+              <span class="voice-repair-eyebrow">安装步骤</span>
+              <h4>在官方窗口中完成 VB-CABLE 安装</h4>
+              <ol>
+                <li>点击“开始自动修复”或“使用内置官方驱动”。</li>
+                <li>在 VB-Audio 官方安装窗口和 UAC 确认中继续。</li>
+                <li>如 Windows 要求重启，重启后重新打开 Nexus Prime 再执行自动修复。</li>
+              </ol>
+            </div>
+            <aside class="voice-repair-action voice-repair-callout">
+              <span class="voice-repair-status">安装完成后</span>
+              <strong>CABLE Output</strong>
+              <p>应用会重新检查端点，并只在端点就绪时校正默认录音设备。</p>
+            </aside>
           </section>
+
           <section v-else class="voice-repair-panel" role="tabpanel">
-            <p><strong>安装器被取消：</strong>再次点自动修复并在 UAC 中选择“是”。</p>
-            <p><strong>安装后仍未识别：</strong>重启 Windows；如仍无效，在设备管理器移除重复的 VB-CABLE 设备后重新安装。</p>
-            <p><strong>输入法无声音：</strong>输入法或语音软件应监听 CABLE Output；不要把日常扬声器设成 CABLE Input。</p>
+            <div class="voice-repair-copy">
+              <span class="voice-repair-eyebrow">排查建议</span>
+              <h4>遇到安装或输入问题时</h4>
+              <p><strong>安装器被取消：</strong>再次点击自动修复，并在 UAC 中选择“是”。</p>
+              <p><strong>安装后仍未识别：</strong>先重启 Windows；如仍无效，再移除重复的 VB-CABLE 设备后重新安装。</p>
+            </div>
+            <aside class="voice-repair-action voice-repair-callout">
+              <span class="voice-repair-status">输入法设置</span>
+              <strong>监听 CABLE Output</strong>
+              <p>输入法或语音软件应监听 CABLE Output；日常扬声器不应设成 CABLE Input。</p>
+            </aside>
           </section>
-        </div>
+        </section>
       </div>
 
       <section v-if="isMappingPage && config" class="mapping-page">
@@ -2448,31 +2482,142 @@ watch(
   color: var(--text-secondary) !important;
 }
 .voice-modal-download { margin-top: 14px !important; margin-bottom: 0 !important; color: var(--text) !important; }
-.voice-repair-modal { width: min(500px, 100%); }
-.voice-repair-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  margin: 0 0 16px;
+.voice-repair-modal {
+  width: min(920px, calc(100vw - 64px));
+  height: min(560px, calc(100dvh - 64px));
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  box-sizing: border-box;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-muted);
+  border-radius: 14px;
+  background: var(--card-bg);
+  box-shadow: var(--dialog-shadow);
 }
-.voice-repair-tab {
-  flex: 1;
-  min-width: 0;
-  padding: 7px 8px;
+.voice-repair-head {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto minmax(80px, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.voice-repair-title-block h3,
+.voice-repair-title-block p,
+.voice-repair-copy h4,
+.voice-repair-copy p,
+.voice-repair-copy ol,
+.voice-repair-action p { margin: 0; }
+.voice-repair-title-block h3 { color: var(--text); font-size: 16px; }
+.voice-repair-title-block p { margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
+.voice-repair-tabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--nav-segment-border);
+  border-radius: 999px;
+  background: var(--nav-segment-bg);
+}
+.voice-repair-tabs button {
+  height: 34px;
+  min-width: 76px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 5px;
-  color: var(--text-secondary);
+  border-radius: 999px;
+  color: var(--nav-muted);
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
-.voice-repair-tab.active { color: var(--text); background: var(--surface-raised); box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent); }
-.voice-repair-tab:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 1px; }
-.voice-repair-panel > p:last-child { margin-bottom: 0; }
+.voice-repair-tabs button:hover { color: var(--nav-ink); background: var(--nav-segment-hover); }
+.voice-repair-tabs button.active { color: var(--nav-segment-active-ink); background: var(--nav-segment-active); box-shadow: var(--nav-segment-shadow); }
+.voice-repair-tabs button:focus-visible,
+.voice-repair-button:focus-visible,
+.voice-repair-link:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.voice-repair-close {
+  width: 36px;
+  min-height: 36px;
+  justify-self: end;
+  padding: 0;
+  border-radius: 10px;
+}
+.voice-repair-close svg { width: 17px; height: 17px; }
+.voice-repair-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr);
+  gap: 24px;
+  min-height: 0;
+  padding: 24px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.voice-repair-copy { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 12px; min-width: 0; }
+.voice-repair-eyebrow { color: var(--primary); font-size: 12px; font-weight: 700; }
+.voice-repair-copy h4 { color: var(--text); font-size: 20px; line-height: 1.32; }
+.voice-repair-copy p,
+.voice-repair-copy ol { color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+.voice-repair-copy ol { padding-left: 1.3em; }
+.voice-repair-copy li + li { margin-top: 5px; }
+.voice-repair-detail { color: var(--text-muted) !important; }
+.voice-repair-action {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.voice-repair-callout { align-items: flex-start; gap: 10px; }
+.voice-repair-status { padding: 3px 7px; border: 1px solid var(--info-border); border-radius: 999px; color: var(--info-text); background: var(--info-bg); font-size: 11px; font-weight: 600; }
+.voice-repair-callout strong { color: var(--text); font-size: 17px; }
+.voice-repair-callout p { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.voice-repair-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms var(--ease-out), color 140ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+.voice-repair-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.voice-repair-button--primary { color: #fff; border-color: var(--primary); background: var(--primary); box-shadow: 0 5px 12px color-mix(in srgb, var(--primary) 24%, transparent); }
+.voice-repair-button--secondary { color: var(--text); border-color: var(--border); background: var(--surface-raised); box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent); }
+.voice-repair-button:active:not(:disabled) { transform: scale(.97); }
+.voice-repair-button:disabled,
+.voice-repair-link:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.voice-repair-link { padding: 0; border: 0; color: var(--primary); background: transparent; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.voice-repair-hint { color: var(--success-text); font-size: 12px; line-height: 1.45; }
+@media (hover: hover) and (pointer: fine) {
+  .voice-repair-button--primary:hover:not(:disabled) { border-color: var(--primary-dark); background: var(--primary-dark); box-shadow: 0 7px 16px color-mix(in srgb, var(--primary) 28%, transparent); }
+  .voice-repair-button--secondary:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+  .voice-repair-link:hover:not(:disabled) { color: var(--primary-dark); }
+}
+@media (max-width: 780px) {
+  .voice-repair-modal { width: min(100%, calc(100vw - 36px)); height: min(560px, calc(100dvh - 36px)); }
+  .voice-repair-head { grid-template-columns: 1fr auto; }
+  .voice-repair-tabs { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+  .voice-repair-panel { grid-template-columns: 1fr; gap: 18px; padding: 20px; }
+}
+@media (max-width: 520px) {
+  .voice-repair-tabs button { min-width: 0; padding: 0 10px; }
+  .voice-repair-title-block p { display: none; }
+  .voice-repair-copy h4 { font-size: 18px; }
+}
 
 .log-modal {
   width: min(720px, 100%);
