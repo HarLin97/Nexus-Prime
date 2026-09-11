@@ -8,7 +8,8 @@
 - 正常应用流程改为 `ShellExecuteExW` 启动 `VBCABLE_Setup_x64.exe` 的官方图形安装器并等待结束，不弹出 PowerShell 黑框。并发安装返回可重试结果；UAC 取消、普通退出、`3010` / `1641` 和 10 秒内端点仍未就绪均提供明确结果。CABLE Input/Output 就绪后，PowerShell 新增的 `EnsureMic` 模式只负责将默认麦克风校正为 CABLE Output；历史静默安装模式仅保留手工/RunOnce 兼容。
 - 首页“修复声卡”不再立即执行，改为项目原有主题变量下的“修复 / 安装说明 / 常见问题”页签弹窗；自动修复与内置官方驱动共享同一官方安装器路径，下载、取消和官网入口仍可用。
 - 自动化：Gadget 9/9、前端 55/55、Rust 142 通过，另有 RC003/WUDFHost 和 ChatGPT 桌面版两个既有环境依赖 smoke ignored；前端生产构建、Cargo workspace 全目标检查和 `git diff --check` 通过。
-- 本地 NSIS 包已重建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.3_x64-setup.exe`，13,360,977 bytes，SHA-256 `FA2A0AA94C3910C7F21BF88617E1B506EF3F4D05BDF2F835CE1E1496710418B9`；应用与安装包产品版本均为 `0.4.3`。`latest.json` 已同步该名称、大小与摘要，待发布后复核远端资产与公开下载。
+- 本地 NSIS 包已重建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.3_x64-setup.exe`，13,360,977 bytes，SHA-256 `FA2A0AA94C3910C7F21BF88617E1B506EF3F4D05BDF2F835CE1E1496710418B9`；应用与安装包产品版本均为 `0.4.3`。发布提交/标签为 `d6d9623d4d8c85b82994c1ced2d2267adaaa4242` / `v0.4.3`。
+- GitHub 正式 Release [`v0.4.3`](https://github.com/LightyearXizIl/Nexus-Prime/releases/tag/v0.4.3) 已公开。资产 `Nexus.Prime_0.4.3_x64-setup.exe` 状态为 `uploaded`，大小 13,360,977 bytes，GitHub 摘要 `sha256:fa2a0aa94c3910c7f21bf88617e1b506ef3f4d05bdf2f835ce1e1496710418b9`，与本地一致；Release `latest.json` 与 `main/latest.json` 均已读取并确认包含 v0.4.3 安装包元数据。
 - 发布前仍待手工验收：未安装、损坏安装、重复设备和已安装状态；官方 GUI/UAC、取消、重启后的 CABLE Input/Output 与 CABLE Output 默认麦克风校正。不得把自动化结果表述为上述 Windows 驱动场景已完成验收。
 
 ## Issue #6：RC003 TV 键原生字符穿透修复（2026-09-11）
