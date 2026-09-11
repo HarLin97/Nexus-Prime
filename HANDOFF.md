@@ -1,6 +1,30 @@
 # 交接记录
 
-更新时间：2026-09-07
+更新时间：2026-09-11
+
+## 全项目复核（2026-09-11）
+
+- 随后合并 PR #7、#8 的功能整合已在本地完成，发布版本仍保持 `0.4.1`；未采用 PR 中的 `0.4.2` 或 `0.4.3`。
+- 合并后的验证：Gadget 测试 9/9、前端 52/52、Rust 133/133 通过；2 个需要真实 RC003/ChatGPT 环境的测试按设计 ignored；前端生产构建、Cargo 全目标检查和 `git diff --check` 通过。未执行新的 Tauri 安装包发布，不能据此宣称新安装包或远程 Release 已更新。
+
+- 本次以 `E:\Vibe coding\Nexus Prime\Nexus Prime-repo` 为交接与后续开发基准。该副本 Git 状态干净，当前 `HEAD` 为 `aff2ff9`，与 `origin/main` 同步；版本号为 `0.4.1`。外层目录中的 `Nexus Prime` 副本仍不作为 Git 写入目标，原因是历史上出现过 `fatal: bad object HEAD`。
+- 已复核项目结构：Vue/Vite 前端位于 `src/`（29 个 TypeScript、11 个 Vue 文件），Tauri/Rust 后端位于 `src-tauri/src/`（46 个 Rust 文件），核心模块覆盖配置管理、日志、更新器、BLE/UDP 遥控器桥接、HID/WinUHid 注入、按键映射、ATVV 音频、VB-CABLE、托盘与自启动；`src-tauri/assets/` 保存 WinUHid 和音频相关安装资源，`public/` 与 `src-tauri/icons/` 保存网页、桌面及移动端图标资源。
+- 已对 `README.md`、`CHANGELOG.md`、`CONTRIBUTING.md`、`THIRD_PARTY_NOTICES.md`、`package.json`、Cargo 配置及当前源代码进行交叉检查。当前文档最新发布范围均为 v0.4.1；没有发现 v0.4.1 之后的代码提交或未记录的 Git 改动。
+
+### 本次自动化复核
+
+- `npm.cmd test -- --run`：13 个测试文件、50/50 通过。
+- `npm.cmd run build`：`vue-tsc --noEmit` 与 Vite 生产构建通过。
+- `cargo test --workspace --manifest-path src-tauri/Cargo.toml`：130/130 通过。
+- `cargo check --workspace --all-targets --manifest-path src-tauri/Cargo.toml`：通过。
+- `git diff --check`：通过。
+- 本次未重新执行 `npm.cmd run tauri:build`，因此不新增或改写安装包、大小、SHA-256、Release 或 `latest.json` 结论；这些仍以 v0.4.1 发布记录为准。
+
+### 当前交接边界
+
+- v0.4.1 的本地构建包和 GitHub Release 已在下方原记录中完成校验；本次复核未修改真实用户配置、输入法设置、驱动安装状态或远程发布内容。
+- v0.4.1 仍待真实设备验收：Alt+F4 录入与执行、Alt+Tab/Alt+Space/Alt+Esc 系统行为、Alt+字母路径，以及“一键重置”范围和保留项；未完成前不要宣称这些场景已通过真机验收。
+- 后续代码或发布工作应继续在 `Nexus Prime-repo` 完成，并在交接文档中分别记录自动化、打包、远程 Release 和真实设备证据。
 
 ## 本次范围（v0.4.1，2026-09-07）
 
