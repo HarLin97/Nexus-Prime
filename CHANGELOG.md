@@ -1,10 +1,12 @@
 # 更新日志
 
-## [0.4.3] - 2026-09-11
+## [0.4.1] - 2026-09-11（合并 PR #7、#8 的功能）
 
 ### 新增与修复
 
 - ChatGPT / Codex 预设新增“主页键”动作：单击主页键会启动或激活 ChatGPT 桌面版，并把 `ProseMirror` 输入框设为焦点；语音键继续只负责按住听写，不再在每次录音时抢占焦点。
+
+- HID Tap Gadget 保留 `STATUS_PENDING` 读取请求，并依据 `IO_STATUS_BLOCK.Information` 恰好转发一次 RC003 报告；桥接重启会完整停止并重建 HID Tap 与 BLE worker。
 
 ## [0.4.1] - 2026-09-07
 
