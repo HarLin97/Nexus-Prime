@@ -7,7 +7,8 @@
 - 根因已落实：RC003 TV 键的 HID Usage `0x35` 被 Windows 同时翻译为 `VK_OEM_3`，因此英文输入框得到反引号，中文输入法得到间隔号；清空应用内映射只能停止二次动作，不能阻止遥控器原始键。
 - 新增内部 `tv_native_guard`：低级键盘钩子收到 `VK_OEM_3 + scan 0x29` 时先非阻塞缓存，最多等待 120ms。HID Tap 的 TV DOWN 在配置、TV gate 和 `KeyAction::None` 前立即确认遥控器来源；确认后丢弃整次原始按压，超时则用带 `EXTRA_INFO` 的 SendInput 按原顺序回放实体键盘事件。队列满、钩子停止、断连和异常均采用 fail-open 回放，避免丢键或粘键。
 - TV 的原生键抑制不再依赖是否存在单击、连击或长按映射；语音 F5、方向、菜单、音量、ATVV、WinUHid、配置格式和公开命令均未改动。发布版本已同步为 `0.4.2`。
-- 本地 NSIS 安装包已重新构建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.2_x64-setup.exe`，13,350,889 bytes，SHA-256 `E1430D75D52C7EB5C6BDCD4432076018943E1A6A18E1FFC95176084E86C587BB`；主程序与安装包产品版本均为 `0.4.2`。`latest.json` 已写入对应 tag、下载名、大小和摘要；tag、Release 与远端下载核验结果将在发布完成后记录。
+- 本地 NSIS 安装包已重新构建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.2_x64-setup.exe`，13,350,889 bytes，SHA-256 `E1430D75D52C7EB5C6BDCD4432076018943E1A6A18E1FFC95176084E86C587BB`；主程序与安装包产品版本均为 `0.4.2`。发布提交/标签为 `12bf889f8fe2fd71781c12a23a569c428f7a2688` / `v0.4.2`。
+- GitHub 正式 Release [`v0.4.2`](https://github.com/LightyearXizIl/Nexus-Prime/releases/tag/v0.4.2) 已公开。资产 `Nexus.Prime_0.4.2_x64-setup.exe` 状态为 `uploaded`，大小 13,350,889 bytes，GitHub 摘要 `sha256:e1430d75d52c7eb5c6bdcd4432076018943e1a6a18e1ffc95176084e86c587bb`，与本地一致；Release `latest.json` 和 `main/latest.json` 均可读取，公开安装包下载返回 HTTP 200 与相同长度。
 
 ### 本次验证
 
