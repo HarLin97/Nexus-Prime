@@ -49,6 +49,9 @@ export type VoiceInputProfile =
   | "wechat"
   | "wechat-current"
   | "qianwen"
+  | "qianwen-left-ctrl"
+  | "qianwen-left-ctrl-win"
+  | "qianwen-left-win-alt"
   | "doubao-hold"
   | "doubao-hands-free";
 

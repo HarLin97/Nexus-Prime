@@ -1472,7 +1472,7 @@ fn handle_voice(app: &AppHandle, pressed: bool) {
     // wait intentionally follows the upstream F5 pre-signal rule (80ms), not
     // the removed unconditional 20ms delay.
     settle_firmware_modifier_capture_before_injection();
-    sanitize_confirmed_firmware_modifiers_for_alt_voice(&vks, profile);
+    sanitize_confirmed_firmware_modifiers_for_ime_voice(&vks, profile);
 
     if is_wechat_start_voice_shortcut(&vks, profile) {
         if !VOICE_SESSION.lock().begin_tap(profile) {
@@ -1495,9 +1495,12 @@ fn handle_voice(app: &AppHandle, pressed: bool) {
     // 先截掉固件自带 Ctrl/Win，目标和弦才会落在干净的修饰键状态上。
     if let Some(route) = press_voice_shortcut(&vks, profile, "remote_down") {
         if route == VoiceInjectionRoute::SendInputFallback
-            && matches!(profile, Some(VoiceInputProfile::Qianwen))
+            && profile.is_some_and(VoiceInputProfile::is_qianwen)
         {
-            emit_message(app, "千问语音已降级为 SendInput；请在小米设置中修复虚拟键盘后重试");
+            emit_message(
+                app,
+                "千问语音已降级为 SendInput；请在小米设置中修复虚拟键盘后重试",
+            );
         }
         log::info!(
             "XIAOMI VOICE SHORTCUT DOWN mode={:?} route={} vks={vks:?}",
@@ -1755,24 +1758,23 @@ fn settle_firmware_modifier_capture_before_injection() {
     );
 }
 
-/// 千问/豆包的右 Alt 不能与遥控器泄漏的左 Ctrl/左 Win 同时落入系统，
-/// 否则输入法实际看到的是 Ctrl+Win+Alt，而不是它们配置的右 Alt。
+/// 千问/豆包的语音快捷键不能与遥控器泄漏的左 Ctrl/左 Win 同时落入系统，
+/// 否则输入法实际看到的是额外的 Ctrl/Win，而不是用户配置的组合。
 ///
 /// 这是上游 `recover_foreign_modifiers` 在本项目中的最小、设备限定版本：
 /// 仅在已确认本次语音 F5 周期后检查这两个已知固件键，绝不扫描或释放其它
 /// 用户修饰键；微信路径不会调用它。
-fn sanitize_confirmed_firmware_modifiers_for_alt_voice(
+fn sanitize_confirmed_firmware_modifiers_for_ime_voice(
     target_vks: &[u16],
     profile: Option<VoiceInputProfile>,
 ) {
-    if !matches!(
-        profile,
-        Some(
-            VoiceInputProfile::Qianwen
-                | VoiceInputProfile::DoubaoHold
-                | VoiceInputProfile::DoubaoHandsFree
-        )
-    ) || !VOICE_F5_DOWN_SUPPRESSED.load(Ordering::Acquire)
+    if !profile.is_some_and(|profile| {
+        profile.is_qianwen()
+            || matches!(
+                profile,
+                VoiceInputProfile::DoubaoHold | VoiceInputProfile::DoubaoHandsFree
+            )
+    }) || !VOICE_F5_DOWN_SUPPRESSED.load(Ordering::Acquire)
     {
         return;
     }
@@ -1789,7 +1791,7 @@ fn sanitize_confirmed_firmware_modifiers_for_alt_voice(
         }
         let released = key_chord(&leaked, true);
         log::info!(
-            "XIAOMI VOICE alt-profile firmware modifier recovery confirmed=true released={released} vks={leaked:?} profile={profile:?}"
+            "XIAOMI VOICE ime-profile firmware modifier recovery confirmed=true released={released} vks={leaked:?} profile={profile:?}"
         );
     }
 }
@@ -1924,7 +1926,7 @@ fn release_voice_shortcut(
     // menu. WeChat start-voice Ctrl+Win is handled above as one short tap and
     // uses the same F24 neutralization on that tap's release.
     let released = execute_voice_release_steps(&voice_release_steps(vks, route, profile), route);
-    if matches!(profile, Some(VoiceInputProfile::Qianwen)) {
+    if profile.is_some_and(VoiceInputProfile::is_qianwen) {
         log::info!(
             "XIAOMI VOICE Qianwen direct release route={} vks={vks:?}",
             voice_injection_route_label(route),
@@ -1974,7 +1976,7 @@ fn voice_release_steps(
     route: VoiceInjectionRoute,
     profile: Option<VoiceInputProfile>,
 ) -> Vec<VoiceReleaseStep> {
-    if matches!(profile, Some(VoiceInputProfile::Qianwen)) {
+    if profile.is_some_and(VoiceInputProfile::is_qianwen) {
         return vec![VoiceReleaseStep::Release(vks.to_vec())];
     }
     if voice_needs_shell_neutralizer(vks) {
@@ -3123,15 +3125,18 @@ mod gesture_tests {
     }
 
     #[test]
-    fn qianwen_profile_releases_right_alt_directly_without_f24() {
-        assert_eq!(
-            voice_release_steps(
-                &[0xA5],
-                VoiceInjectionRoute::VirtualHid,
-                Some(VoiceInputProfile::Qianwen),
-            ),
-            vec![VoiceReleaseStep::Release(vec![0xA5])]
-        );
+    fn qianwen_profiles_release_the_original_shortcut_directly_without_f24() {
+        for (profile, vks) in [
+            (VoiceInputProfile::QianwenLeftCtrl, vec![0xA2]),
+            (VoiceInputProfile::QianwenLeftCtrlWin, vec![0xA2, 0x5B]),
+            (VoiceInputProfile::QianwenLeftWinAlt, vec![0x5B, 0xA4]),
+            (VoiceInputProfile::Qianwen, vec![0xA5]),
+        ] {
+            assert_eq!(
+                voice_release_steps(&vks, VoiceInjectionRoute::VirtualHid, Some(profile)),
+                vec![VoiceReleaseStep::Release(vks)],
+            );
+        }
         assert_eq!(
             voice_release_steps(
                 &[0xA5],

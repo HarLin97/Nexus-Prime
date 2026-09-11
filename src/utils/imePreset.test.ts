@@ -121,6 +121,31 @@ describe("applyImePresetConfig", () => {
     });
   });
 
+  it.each([
+    ["qianwen-left-ctrl", [0xa2], ["leftctrl"]],
+    ["qianwen-left-ctrl-win", [0xa2, 0x5b], ["leftctrl", "leftwin"]],
+    ["qianwen-left-win-alt", [0x5b, 0xa4], ["leftwin", "leftalt"]],
+    ["qianwen", [0xa5], ["rightalt"]],
+  ] as const)("configures %s as a Qianwen hold shortcut", (preset, shortcutVks, voiceHotkey) => {
+    const next = applyImePresetConfig(configWithLegacyVoiceGestures(), preset);
+
+    expect(IME_PRESETS[preset]).toMatchObject({ shortcutVks, voiceHotkey, triggerMode: "Hold" });
+    expect(next).toMatchObject({
+      button_bindings: {
+        mic: shortcutVks.length === 1
+          ? { type: "SingleKey", value: shortcutVks[0] }
+          : { type: "ComboKey", value: shortcutVks },
+        voice: shortcutVks.length === 1
+          ? { type: "SingleKey", value: shortcutVks[0] }
+          : { type: "ComboKey", value: shortcutVks },
+      },
+      voice_hotkey: voiceHotkey,
+      voice_input_profile: preset,
+      voice_shortcut_enabled: true,
+      trigger_mode: "Hold",
+    });
+  });
+
   it("configures the Doubao hands-free shortcut as a click-mode Alt+Space chord", () => {
     const next = applyImePresetConfig(configWithLegacyVoiceGestures(), "doubao-hands-free");
 

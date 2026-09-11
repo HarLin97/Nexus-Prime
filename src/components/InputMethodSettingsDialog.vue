@@ -26,6 +26,12 @@ const providers: Array<{ id: ImeProvider; label: string }> = [
   { id: "qianwen", label: "千问" },
   { id: "doubao", label: "豆包" },
 ];
+const qianwenOptions: Array<{ preset: ImePreset; shortcut: string; status: string }> = [
+  { preset: "qianwen-left-ctrl", shortcut: "左 Ctrl", status: "可选快捷键" },
+  { preset: "qianwen-left-ctrl-win", shortcut: "左 Ctrl + 左 Win", status: "可选快捷键" },
+  { preset: "qianwen-left-win-alt", shortcut: "左 Win + 左 Alt", status: "可选快捷键" },
+  { preset: "qianwen", shortcut: "右 Alt", status: "默认快捷键" },
+];
 
 const activeProvider = ref<ImeProvider>("codex");
 const lastAppliedPreset = ref<ImePreset | null>(null);
@@ -242,24 +248,29 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
         <template v-else-if="activeProvider === 'qianwen'">
           <div class="ime-panel-copy">
-            <span class="ime-eyebrow">{{ activeLabel }} · 默认</span>
-            <h4>按住右 Alt 说话，松开上屏</h4>
+            <span class="ime-eyebrow">{{ activeLabel }} · 四种语音快捷键</span>
+            <h4>选择与千问输入法一致的按住说话快捷键</h4>
             <p id="ime-qianwen-summary">
-              千问输入法 Windows 端默认使用 <code>右 Alt</code> 唤醒语音输入；本软件需要设为同一按住快捷键。
+              千问输入法可将“短按或按住说话”设为下方四种快捷键之一。本软件会在遥控器按下时按住、松开时释放同一组合。
             </p>
             <p class="ime-detail">
-              若你在千问输入法里改过唤醒快捷键，请在按键映射中录入相同组合，并确认千问已获得麦克风权限。
+              请在千问输入法“语音输入”中选择相同组合；此处不会自动修改千问设置。右 Alt 是千问的默认快捷键。
             </p>
           </div>
-          <aside class="ime-panel-action ime-callout">
-            <span class="ime-status">推荐映射</span>
-            <strong>右 Alt</strong>
-            <p>触发模式：按住</p>
-            <button class="ime-button ime-button--primary" type="button" :disabled="!configReady || saving" @click="apply('qianwen')">
-              <span>{{ saving ? "正在应用…" : "快速应用此映射" }}</span>
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5" /></svg>
-            </button>
-            <span v-if="applyHint && lastAppliedPreset === 'qianwen'" class="ime-apply-hint" aria-live="polite">{{ applyHint }}</span>
+          <aside class="ime-panel-action ime-qianwen-actions">
+            <section v-for="option in qianwenOptions" :key="option.preset" class="ime-qianwen-option">
+              <div class="ime-option-head">
+                <span class="ime-status">{{ option.status }}</span>
+                <span v-if="activePreset === option.preset" class="ime-current">当前已应用</span>
+              </div>
+              <strong>{{ option.shortcut }}</strong>
+              <p>触发模式：按住</p>
+              <button class="ime-button ime-button--primary" type="button" :aria-pressed="activePreset === option.preset" :disabled="!configReady || saving" @click="apply(option.preset)">
+                <span>{{ saving ? "正在应用…" : `应用 ${option.shortcut}` }}</span>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5" /></svg>
+              </button>
+              <span v-if="applyHint && lastAppliedPreset === option.preset" class="ime-apply-hint" aria-live="polite">{{ applyHint }}</span>
+            </section>
           </aside>
         </template>
 
@@ -493,13 +504,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .ime-callout .ime-button { margin-top: 6px; }
 .ime-apply-hint { color: var(--success-text); font-size: 12px; line-height: 1.45; }
 
-.ime-wechat-actions, .ime-doubao-actions { gap: 12px; padding: 14px; }
-.ime-wechat-option, .ime-doubao-option { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-raised); }
+.ime-wechat-actions, .ime-qianwen-actions, .ime-doubao-actions { gap: 12px; padding: 14px; }
+.ime-wechat-option, .ime-qianwen-option, .ime-doubao-option { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-raised); }
 .ime-option-head { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; }
 .ime-current { color: var(--success-text); font-size: 11px; font-weight: 700; }
-.ime-wechat-option strong, .ime-doubao-option strong { color: var(--text); font-size: 16px; }
-.ime-wechat-option p, .ime-doubao-option p { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
-.ime-wechat-option .ime-button, .ime-doubao-option .ime-button { width: 100%; margin-top: 2px; }
+.ime-wechat-option strong, .ime-qianwen-option strong, .ime-doubao-option strong { color: var(--text); font-size: 16px; }
+.ime-wechat-option p, .ime-qianwen-option p, .ime-doubao-option p { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.ime-wechat-option .ime-button, .ime-qianwen-option .ime-button, .ime-doubao-option .ime-button { width: 100%; margin-top: 2px; }
 
 @media (max-width: 780px) {
   .ime-backdrop { padding: 18px; }

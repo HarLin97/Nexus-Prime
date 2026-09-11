@@ -1,6 +1,14 @@
 # 交接记录
 
-更新时间：2026-09-11
+更新时间：2026-09-12
+
+## v0.4.5：千问四种语音快捷键（2026-09-12）
+
+- 千问输入法设置弹窗现可独立应用左 Ctrl、左 Ctrl + 左 Win、左 Win + 左 Alt、右 Alt 四种按住说话快捷键；不会读取或修改千问输入法自身配置，用户需手动选择两端一致的组合。
+- 旧 `qianwen` profile 仍是右 Alt，以保证已有配置兼容；其余三项使用新的持久化 profile。四种千问 profile 都优先使用 WinUHid、只清理已确认且不属于目标组合的遥控器 Ctrl/Win 泄漏，并在松手时直接释放原组合，不注入 F24、Enter 或 Space。
+- 自动化：Gadget 9/9、前端 60/60、Rust 143 通过；前端生产构建、Cargo workspace 全目标检查与 NSIS 打包通过。RC003/WUDFHost 与 ChatGPT 桌面版两个既有环境 smoke 为 ignored。
+- 本地 NSIS 包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.5_x64-setup.exe`，13,360,573 bytes，SHA-256 `60B604377A23BB16A1EF7E71EBC947178E14EA773D26361B4E20EF1201FC9B5E`；应用与安装包产品版本均为 `0.4.5`。
+- 尚未在真实遥控器 + 千问输入法上逐项完成 10 次连续按压、自动上屏、无开始菜单/系统菜单、无 F5 串入和无粘键的验收。
 
 ## v0.4.4：虚拟声卡弹窗与输入法设置统一（2026-09-11）
 

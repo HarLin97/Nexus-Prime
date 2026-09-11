@@ -70,12 +70,26 @@ pub enum VoiceInputProfile {
     WechatHold,
     Wechat,
     WechatCurrent,
+    QianwenLeftCtrl,
+    QianwenLeftCtrlWin,
+    QianwenLeftWinAlt,
+    /// Legacy persisted name for Qianwen's default right-Alt shortcut.
     Qianwen,
     DoubaoHold,
     DoubaoHandsFree,
 }
 
 impl VoiceInputProfile {
+    pub(crate) fn is_qianwen(self) -> bool {
+        matches!(
+            self,
+            Self::Qianwen
+                | Self::QianwenLeftCtrl
+                | Self::QianwenLeftCtrlWin
+                | Self::QianwenLeftWinAlt
+        )
+    }
+
     pub(crate) fn matches_voice_binding(
         self,
         action: &KeyAction,
@@ -86,6 +100,9 @@ impl VoiceInputProfile {
             Self::WechatHold => return false,
             Self::Wechat => (&[0xA2, 0x5B][..], TriggerMode::Toggle),
             Self::WechatCurrent => (&[0xA2, 0xA0, 0x44][..], TriggerMode::Hold),
+            Self::QianwenLeftCtrl => (&[0xA2][..], TriggerMode::Hold),
+            Self::QianwenLeftCtrlWin => (&[0xA2, 0x5B][..], TriggerMode::Hold),
+            Self::QianwenLeftWinAlt => (&[0x5B, 0xA4][..], TriggerMode::Hold),
             Self::Qianwen | Self::DoubaoHold => (&[0xA5][..], TriggerMode::Hold),
             Self::DoubaoHandsFree => (&[0xA5, 0x20][..], TriggerMode::Toggle),
         };
@@ -812,6 +829,37 @@ mod tests {
         assert!(profile.matches_voice_binding(&KeyAction::SingleKey(0xA5), &TriggerMode::Hold));
         assert!(!profile.matches_voice_binding(&KeyAction::SingleKey(0xA5), &TriggerMode::Toggle));
         assert!(!profile.matches_voice_binding(&KeyAction::SingleKey(0xA4), &TriggerMode::Hold));
+    }
+
+    #[test]
+    fn qianwen_profiles_round_trip_and_match_their_configured_shortcuts() {
+        let profiles = [
+            (
+                VoiceInputProfile::QianwenLeftCtrl,
+                KeyAction::SingleKey(0xA2),
+            ),
+            (
+                VoiceInputProfile::QianwenLeftCtrlWin,
+                KeyAction::ComboKey(vec![0xA2, 0x5B]),
+            ),
+            (
+                VoiceInputProfile::QianwenLeftWinAlt,
+                KeyAction::ComboKey(vec![0x5B, 0xA4]),
+            ),
+            (VoiceInputProfile::Qianwen, KeyAction::SingleKey(0xA5)),
+        ];
+
+        for (profile, action) in profiles {
+            assert!(profile.is_qianwen());
+            assert_eq!(
+                serde_json::from_str::<VoiceInputProfile>(&serde_json::to_string(&profile).unwrap())
+                    .unwrap(),
+                profile
+            );
+            assert!(profile.matches_voice_binding(&action, &TriggerMode::Hold));
+            assert!(!profile.matches_voice_binding(&action, &TriggerMode::Toggle));
+        }
+        assert!(!VoiceInputProfile::DoubaoHold.is_qianwen());
     }
 
     #[test]

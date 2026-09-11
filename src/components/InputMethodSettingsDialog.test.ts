@@ -12,7 +12,7 @@ function mountDialog() {
 describe("InputMethodSettingsDialog", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("matches WeChat's two voice modes and keeps both Doubao modes", async () => {
+  it("matches WeChat's two voice modes, all Qianwen shortcuts, and both Doubao modes", async () => {
     const wrapper = mountDialog();
     const tabs = wrapper.findAll('[role="tab"]');
     expect(tabs).toHaveLength(4);
@@ -30,8 +30,20 @@ describe("InputMethodSettingsDialog", () => {
     expect(wrapper.emitted("apply")).toEqual([["wechat"], ["wechat-current"]]);
 
     await tabs[2].trigger("click");
-    await wrapper.get("button.ime-button--primary").trigger("click");
-    expect(wrapper.emitted("apply")).toEqual([["wechat"], ["wechat-current"], ["qianwen"]]);
+    expect(wrapper.text()).toContain("左 Ctrl + 左 Win");
+    expect(wrapper.text()).toContain("左 Win + 左 Alt");
+    expect(wrapper.text()).toContain("右 Alt");
+    const qianwenButtons = wrapper.findAll(".ime-qianwen-option button");
+    expect(qianwenButtons).toHaveLength(4);
+    for (const button of qianwenButtons) await button.trigger("click");
+    expect(wrapper.emitted("apply")).toEqual([
+      ["wechat"],
+      ["wechat-current"],
+      ["qianwen-left-ctrl"],
+      ["qianwen-left-ctrl-win"],
+      ["qianwen-left-win-alt"],
+      ["qianwen"],
+    ]);
 
     await tabs[3].trigger("click");
     expect(wrapper.text()).toContain("电脑麦克风");
@@ -42,6 +54,9 @@ describe("InputMethodSettingsDialog", () => {
     expect(wrapper.emitted("apply")).toEqual([
       ["wechat"],
       ["wechat-current"],
+      ["qianwen-left-ctrl"],
+      ["qianwen-left-ctrl-win"],
+      ["qianwen-left-win-alt"],
       ["qianwen"],
       ["doubao-hold"],
       ["doubao-hands-free"],
@@ -73,6 +88,19 @@ describe("InputMethodSettingsDialog", () => {
     expect(wrapper.findAll(".ime-doubao-option .ime-apply-hint")).toHaveLength(1);
     await wrapper.findAll(".ime-doubao-option button")[1].trigger("click");
     expect(wrapper.findAll(".ime-doubao-option .ime-apply-hint")).toHaveLength(1);
+  });
+
+  it("disables every Qianwen action while saving and marks only the active shortcut", async () => {
+    const wrapper = mountDialog();
+    await wrapper.findAll('[role="tab"]')[2].trigger("click");
+    await wrapper.setProps({ saving: true });
+    expect(wrapper.findAll(".ime-qianwen-option button:disabled")).toHaveLength(4);
+
+    await wrapper.setProps({ saving: false, applyHint: "已应用：千问语音键 = 左 Win + 左 Alt", activePreset: "qianwen-left-win-alt" });
+    expect(wrapper.findAll(".ime-qianwen-option .ime-current")).toHaveLength(1);
+    expect(wrapper.findAll(".ime-qianwen-option button")[2].attributes("aria-pressed")).toBe("true");
+    await wrapper.findAll(".ime-qianwen-option button")[2].trigger("click");
+    expect(wrapper.findAll(".ime-qianwen-option .ime-apply-hint")).toHaveLength(1);
   });
 
   it("cycles tab selection with the keyboard and restores focus after closing", async () => {
