@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/nexus-hid-async-fix
+      - codex/chatgpt-focus-voice-pr
   workflow_dispatch:
 
 permissions:

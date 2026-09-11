@@ -21,7 +21,7 @@ const emit = defineEmits<{
 
 const STORAGE_KEY = "nexus-prime.input-method-settings.provider";
 const providers: Array<{ id: ImeProvider; label: string }> = [
-  { id: "codex", label: "Codex" },
+  { id: "codex", label: "ChatGPT" },
   { id: "wechat", label: "微信" },
   { id: "qianwen", label: "千问" },
   { id: "doubao", label: "豆包" },
@@ -173,14 +173,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
       >
         <template v-if="activeProvider === 'codex'">
           <div class="ime-panel-copy">
-            <span class="ime-eyebrow">{{ activeLabel }} · 默认</span>
-            <h4>按住遥控器说话，松开结束听写</h4>
+            <span class="ime-eyebrow">{{ activeLabel }} · 推荐</span>
+            <h4>主页键切换到 ChatGPT，语音键按住说话</h4>
             <p id="ime-codex-summary">
-              Codex 的语音快捷键必须与本软件完全一致。当前推荐组合为
+              应用后，单击主页键会启动或激活 ChatGPT，并把输入框切到焦点；语音键只负责按住听写，发送
               <code>左 Ctrl + 左 Shift + D</code>。
             </p>
             <p class="ime-detail">
-              请在 Codex 设置中确认“按住进行听写或长按”为 Ctrl+Shift+D；若已改过快捷键，请在按键映射中录入相同组合。
+              请在 ChatGPT / Codex 设置中确认“按住进行听写或长按”为 Ctrl+Shift+D；若已改过快捷键，请在按键映射中录入相同组合。
             </p>
           </div>
           <aside class="ime-panel-action ime-callout">

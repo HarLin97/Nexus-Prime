@@ -1355,6 +1355,7 @@ fn perform_action(action: &KeyAction) -> bool {
             let _ = std::process::Command::new(path).spawn();
             true
         }
+        KeyAction::FocusChatGpt => crate::chatgpt_focus::activate_chatgpt_and_focus_input(),
         KeyAction::MouseClick => mouse_left_click(),
         KeyAction::MouseMove { dx, dy, step, .. } => {
             mouse_move_relative(*dx * *step as i32, *dy * *step as i32)
@@ -1383,6 +1384,7 @@ fn action_label(action: &KeyAction) -> String {
         KeyAction::ComboKey(_) => "未绑定".into(),
         KeyAction::TextInput(text) => format!("文字: {text}"),
         KeyAction::LaunchApp(path) => format!("启动: {path}"),
+        KeyAction::FocusChatGpt => "打开并聚焦 ChatGPT".into(),
         KeyAction::MouseClick => "鼠标左键".into(),
         KeyAction::MouseMove { dx, dy, step, .. } => {
             let dir = match (*dx, *dy) {

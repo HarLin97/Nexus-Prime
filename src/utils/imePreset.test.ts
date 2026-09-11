@@ -24,6 +24,31 @@ function configWithLegacyVoiceGestures(): DeviceConfig {
 }
 
 describe("applyImePresetConfig", () => {
+  it("configures the ChatGPT activation preset with hold-to-talk", () => {
+    const next = applyImePresetConfig(configWithLegacyVoiceGestures(), "codex");
+
+    expect(next).toMatchObject({
+      button_bindings: {
+        home: { type: "FocusChatGpt", value: null },
+        mic: { type: "ComboKey", value: [0xa2, 0xa0, 0x44] },
+        voice: { type: "ComboKey", value: [0xa2, 0xa0, 0x44] },
+      },
+      voice_hotkey: ["leftctrl", "leftshift", "d"],
+      voice_input_profile: "codex",
+      voice_shortcut_enabled: true,
+      trigger_mode: "Hold",
+    });
+  });
+
+  it("keeps the Home binding untouched for non-ChatGPT presets", () => {
+    const original = configWithLegacyVoiceGestures();
+    original.button_bindings.home = { type: "ComboKey", value: [0x5b, 0x44] };
+
+    const next = applyImePresetConfig(original, "qianwen");
+
+    expect(next.button_bindings.home).toEqual({ type: "ComboKey", value: [0x5b, 0x44] });
+  });
+
   it("exposes exactly WeChat's two official voice modes", () => {
     expect(
       Object.keys(IME_PRESETS).filter((profile) => profile.startsWith("wechat")),
