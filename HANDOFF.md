@@ -8,6 +8,7 @@
 - 旧 `qianwen` profile 仍是右 Alt，以保证已有配置兼容；其余三项使用新的持久化 profile。四种千问 profile 都优先使用 WinUHid、只清理已确认且不属于目标组合的遥控器 Ctrl/Win 泄漏，并在松手时直接释放原组合，不注入 F24、Enter 或 Space。
 - 自动化：Gadget 9/9、前端 60/60、Rust 143 通过；前端生产构建、Cargo workspace 全目标检查与 NSIS 打包通过。RC003/WUDFHost 与 ChatGPT 桌面版两个既有环境 smoke 为 ignored。
 - 本地 NSIS 包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.5_x64-setup.exe`，13,360,573 bytes，SHA-256 `60B604377A23BB16A1EF7E71EBC947178E14EA773D26361B4E20EF1201FC9B5E`；应用与安装包产品版本均为 `0.4.5`。
+- 发布源提交/标签：`31075a378a596da0c1589948d44575c8e32eb1d4` / `v0.4.5`。GitHub 正式 Release [`v0.4.5`](https://github.com/LightyearXizIl/Nexus-Prime/releases/tag/v0.4.5) 已公开；资产 `Nexus.Prime_0.4.5_x64-setup.exe` 状态为 `uploaded`、大小 13,360,573 bytes、摘要 `sha256:60b604377a23bb16a1ef7e71ebc947178e14ea773d26361b4e20ef1201fc9b5e`，与本地和 GitHub CLI 下载复算结果一致。Release `latest.json` 与 `main/latest.json` 均已读取并确认包含同一安装包元数据。
 - 尚未在真实遥控器 + 千问输入法上逐项完成 10 次连续按压、自动上屏、无开始菜单/系统菜单、无 F5 串入和无粘键的验收。
 
 ## v0.4.4：虚拟声卡弹窗与输入法设置统一（2026-09-11）
