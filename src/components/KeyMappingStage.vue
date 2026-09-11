@@ -314,6 +314,7 @@ function actionLabel(action: KeyAction): string {
   }
   if (action.type === "TextInput") return t("mapping.text", { value: action.value });
   if (action.type === "LaunchApp") return t("mapping.launch", { value: action.value });
+  if (action.type === "FocusChatGpt") return t("mapping.focusChatGpt");
   if (action.type === "MouseClick") return t("mapping.mouseLeftClick");
   if (action.type === "MouseMove") {
     const v = action.value;

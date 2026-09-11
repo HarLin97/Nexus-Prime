@@ -2,6 +2,7 @@ pub mod bridges;
 pub mod config;
 pub mod ipc;
 pub mod audio;
+pub mod chatgpt_focus;
 pub mod logging;
 pub mod update;
 pub mod windows_command;

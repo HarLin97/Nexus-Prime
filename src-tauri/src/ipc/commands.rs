@@ -575,6 +575,14 @@ pub async fn restart_xiaomi_bridge(
     restart_xiaomi_bridge_inner(&app, &state, &config_manager)
 }
 
+fn run_restart_teardown(
+    stop_hid_tap: impl FnOnce(),
+    stop_worker: impl FnOnce(),
+) {
+    stop_hid_tap();
+    stop_worker();
+}
+
 pub fn restart_xiaomi_bridge_inner(
     app: &AppHandle,
     state: &BridgeState,
@@ -584,19 +592,24 @@ pub fn restart_xiaomi_bridge_inner(
     log::info!("XIAOMI host: restart bridge requested");
     append_host_log(config_manager, "bridge restart requested");
 
-    // 仅停 BLE worker；HID Tap 为进程级单例，重启不解绑 30684（避免自占用）
-    if let Some(runtime) = app.try_state::<Arc<XiaomiRuntime>>() {
-        runtime.request_stop();
-        runtime.cancel_active_session("restart_bridge");
-        crate::bridges::xiaomi::key_mapping::reset_voice_input_state("restart_bridge");
-        // 等旧 worker 退出
-        for _ in 0..50 {
-            if !runtime.running.load(std::sync::atomic::Ordering::SeqCst) {
-                break;
+    // HID Tap 和 BLE worker 共用一次锁内 teardown，保证重启会重建 Gadget 会话。
+    run_restart_teardown(
+        crate::bridges::xiaomi::hid_report_tap::stop_and_join,
+        || {
+            if let Some(runtime) = app.try_state::<Arc<XiaomiRuntime>>() {
+                runtime.request_stop();
+                runtime.cancel_active_session("restart_bridge");
+                crate::bridges::xiaomi::key_mapping::reset_voice_input_state("restart_bridge");
+                // 等旧 worker 退出
+                for _ in 0..50 {
+                    if !runtime.running.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-    }
+        },
+    );
 
     // 语音路由挂了则一并拉起（比 Python 更稳，不破坏 restart_bridge 语义）
     if !crate::audio::pcm_router::audio_router_ready() {
@@ -908,7 +921,6 @@ fn run_atvv_repair_pipeline(
     config_manager: &ConfigManager,
 ) -> Result<(bool, String), String> {
     log::info!("XIAOMI ATVV repair pipeline start");
-    crate::bridges::xiaomi::hid_report_tap::stop_and_join();
     restart_xiaomi_bridge_inner(app, state, config_manager)?;
     let ok = connect::wait_atvv_subscribed(std::time::Duration::from_secs(12));
     let msg = if ok {
@@ -941,5 +953,21 @@ fn bridge_type_to_device(s: &str) -> Result<&str, String> {
     match s.to_lowercase().as_str() {
         "xiaomi" => Ok("xiaomi"),
         _ => Err(format!("未知设备类型: {}", s)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn restart_teardown_stops_hid_tap_before_worker() {
+        use std::cell::RefCell;
+
+        let order = RefCell::new(Vec::new());
+        super::run_restart_teardown(
+            || order.borrow_mut().push("hid_tap"),
+            || order.borrow_mut().push("worker"),
+        );
+
+        assert_eq!(*order.borrow(), ["hid_tap", "worker"]);
     }
 }

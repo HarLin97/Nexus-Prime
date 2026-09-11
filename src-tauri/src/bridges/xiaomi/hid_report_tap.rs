@@ -181,7 +181,7 @@ pub fn ensure_started(app: AppHandle, gate: Arc<KeyEmitGate>) -> bool {
     true
 }
 
-/// 显式停止 hub 并等待端口释放。桥接重启不要调用；应用退出 / 配置禁用时调用。
+/// 显式停止 hub 并等待端口释放。桥接重启、应用退出或配置禁用时调用。
 pub fn stop_and_join() {
     let ctrl = {
         let mut slot = controller_slot().lock();
