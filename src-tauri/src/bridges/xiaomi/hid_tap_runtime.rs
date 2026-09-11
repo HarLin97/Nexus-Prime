@@ -119,7 +119,7 @@ pub fn secure_runtime_directory() -> PathBuf {
 
 fn gadget_config_text() -> String {
     format!(
-        "{{\n  \"interaction\": {{\n    \"type\": \"script\",\n    \"path\": \"{GADGET_SCRIPT_NAME}\",\n    \"parameters\": {{\n      \"host\": \"127.0.0.1\",\n      \"port\": {}\n    }},\n    \"on_change\": \"ignore\"\n  }},\n  \"runtime\": \"qjs\",\n  \"teardown\": \"minimal\"\n}}\n",
+        "{{\n  \"interaction\": {{\n    \"type\": \"script\",\n    \"path\": \"{GADGET_SCRIPT_NAME}\",\n    \"parameters\": {{\n      \"host\": \"127.0.0.1\",\n      \"port\": {}\n    }},\n    \"on_change\": \"reload\"\n  }},\n  \"runtime\": \"qjs\",\n  \"teardown\": \"minimal\"\n}}\n",
         hid_tap_port()
     )
 }
@@ -471,7 +471,15 @@ fn windows_find_host_pid() -> Option<u32> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn gadget_config_reloads_script_changes() {
+        let config = super::gadget_config_text();
+        assert!(config.contains(r#""on_change": "reload""#));
+        assert!(!config.contains(r#""on_change": "ignore""#));
+    }
+
+    #[test]
     #[cfg(target_os = "windows")]
+    #[ignore = "requires a paired RC003 and live WUDFHost"]
     fn find_rc003_host_pid_smoke() {
         let pid = super::find_rc003_hidogatt_host_pid()
             .expect("RC003 HostPid must be found when remote is paired (check BTHLEDevice registry)");

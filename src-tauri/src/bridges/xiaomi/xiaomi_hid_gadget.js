@@ -1,5 +1,9 @@
 const READ_CHARACTERISTIC_IOCTL = 0x80018483;
 const EXPECTED_OUTPUT_LENGTH = 9;
+const STATUS_SUCCESS = 0x00000000;
+const STATUS_PENDING = 0x00000103;
+const PENDING_SWEEP_INTERVAL_MS = 10;
+const MAX_PENDING_IO = 64;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const RECONNECT_DELAY_MS = 1000;
 
@@ -10,6 +14,10 @@ let output = null;
 let writeChain = Promise.resolve();
 let reconnectTimer = null;
 let hookInstalled = false;
+const pendingIo = new Map();
+let nextIoId = 1;
+let completedIo = 0;
+let failedIo = 0;
 
 function asciiBytes(text) {
   const result = [];
@@ -56,6 +64,59 @@ function emit(payload) {
     .catch(() => markDisconnected(currentOutput));
 }
 
+function ioInformation(statusBlock) {
+  const information = statusBlock.add(Process.pointerSize);
+  return Process.pointerSize === 8
+    ? information.readU64().toNumber()
+    : information.readU32();
+}
+
+function removePending(context) {
+  if (pendingIo.get(context.key) === context) {
+    pendingIo.delete(context.key);
+  }
+}
+
+function finishIoContext(context, status) {
+  if (status === STATUS_PENDING) return false;
+  removePending(context);
+  if (status !== STATUS_SUCCESS) {
+    failedIo += 1;
+    return true;
+  }
+
+  const actualLength = ioInformation(context.statusBlock);
+  completedIo += 1;
+  if (
+    !context.output.isNull() &&
+    context.outputLength >= EXPECTED_OUTPUT_LENGTH &&
+    actualLength === EXPECTED_OUTPUT_LENGTH
+  ) {
+    emit({ kind: "gatt_read", raw: hex(context.output, actualLength) });
+  }
+  return true;
+}
+
+function sweepPendingIo() {
+  for (const context of Array.from(pendingIo.values())) {
+    try {
+      finishIoContext(context, context.statusBlock.readU32());
+    } catch (_error) {
+      removePending(context);
+      failedIo += 1;
+    }
+  }
+}
+
+function rememberPending(context) {
+  while (pendingIo.size >= MAX_PENDING_IO) {
+    const oldestKey = pendingIo.keys().next().value;
+    pendingIo.delete(oldestKey);
+    failedIo += 1;
+  }
+  pendingIo.set(context.key, context);
+}
+
 async function connectToHub() {
   if (output !== null) return;
   try {
@@ -85,33 +146,52 @@ function installHook() {
   Interceptor.attach(target, {
     onEnter(args) {
       this.capture = args[5].toUInt32() === READ_CHARACTERISTIC_IOCTL;
-      if (this.capture) {
-        this.output = args[8];
-        this.outputLength = args[9].toUInt32();
-      }
+      if (!this.capture) return;
+      sweepPendingIo();
+      this.ioContext = {
+        id: nextIoId++,
+        key: args[4].toString(),
+        statusBlock: args[4],
+        output: args[8],
+        outputLength: args[9].toUInt32()
+      };
     },
     onLeave(retval) {
-      if (!this.capture || retval.toUInt32() !== 0 || this.output.isNull()) return;
+      if (!this.capture) return;
+      const status = retval.toUInt32();
       try {
-        if (this.outputLength === EXPECTED_OUTPUT_LENGTH) {
-          emit({
-            kind: "gatt_read",
-            raw: hex(this.output, this.outputLength)
-          });
+        if (status === STATUS_PENDING) {
+          if (
+            !this.ioContext.statusBlock.isNull() &&
+            !this.ioContext.output.isNull()
+          ) {
+            rememberPending(this.ioContext);
+          }
+          return;
         }
-      } catch (error) {
-        emit({ kind: "error", message: String(error) });
+        finishIoContext(this.ioContext, status);
+      } catch (_error) {
+        removePending(this.ioContext);
+        failedIo += 1;
       }
     }
   });
   hookInstalled = true;
 }
 
+setInterval(sweepPendingIo, PENDING_SWEEP_INTERVAL_MS);
+
 setInterval(() => {
   if (output === null) {
     scheduleReconnect();
   } else {
-    emit({ kind: "heartbeat", pid: Process.id });
+    emit({
+      kind: "heartbeat",
+      pid: Process.id,
+      pending_io: pendingIo.size,
+      completed_io: completedIo,
+      failed_io: failedIo
+    });
   }
 }, HEARTBEAT_INTERVAL_MS);
 
