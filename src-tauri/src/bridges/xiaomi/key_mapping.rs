@@ -866,6 +866,14 @@ pub fn on_remote_button(app: &AppHandle, button_id: &str, pressed: bool) {
         return;
     }
 
+    // TV 使用 HID usage 0x35，Windows 会同时把它当成 OEM_3/反引号。
+    // 必须在 TV gate、配置加载和 `KeyAction::None` 之前通知低级钩子，
+    // 让原生键抑制与映射动作彻底解耦。
+    if button_id == "tv" {
+        mark_direct_signal(button_id);
+        crate::bridges::xiaomi::special_keys::note_remote_tv_signal(pressed);
+    }
+
     if button_id == "tv" && pressed && !tv_gate::is_ready() {
         log::info!("XIAOMI MAPPING tv blocked_by_gate");
         return;

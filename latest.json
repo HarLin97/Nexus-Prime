@@ -1,16 +1,16 @@
 {
-  "tag_name": "v0.4.1",
-  "name": "Nexus Prime v0.4.1",
-  "body": "- 按键映射支持手动输入 Alt+F4 等组合，并新增一键重置及风险说明。\n- Alt+F4、Alt+Tab、Alt+Space 和 Alt+Esc 改走 Windows 系统组合键路径。\n- 快捷键录入增加会话标识，旧事件不会覆盖当前绑定。",
+  "tag_name": "v0.4.2",
+  "name": "Nexus Prime v0.4.2",
+  "body": "- PR #7：修复 RC003 HID Tap 的异步完成与桥接重启可靠性。\n- PR #8：ChatGPT / Codex 预设新增主页键聚焦动作。\n- Issue #6：RC003 TV 键不再向中文输入法输出「·」或向英文输入框输出反引号。",
   "published_at": null,
   "draft": false,
   "prerelease": false,
   "assets": [
     {
-      "name": "Nexus.Prime_0.4.1_x64-setup.exe",
-      "size": 13339714,
-      "digest": "sha256:45146b9b7e30d4369ba4f762a4b63ddc09d2e6c39c063512f91a04f9c8cfc91f",
-      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.1/Nexus.Prime_0.4.1_x64-setup.exe"
+      "name": "Nexus.Prime_0.4.2_x64-setup.exe",
+      "size": 13350889,
+      "digest": "sha256:e1430d75d52c7eb5c6bdcd4432076018943e1a6a18e1ffc95176084e86c587bb",
+      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.2/Nexus.Prime_0.4.2_x64-setup.exe"
     }
   ]
 }

@@ -1,12 +1,22 @@
 # 更新日志
 
-## [0.4.1] - 2026-09-11（合并 PR #7、#8 的功能）
+## [0.4.2] - 2026-09-11
 
 ### 新增与修复
 
-- ChatGPT / Codex 预设新增“主页键”动作：单击主页键会启动或激活 ChatGPT 桌面版，并把 `ProseMirror` 输入框设为焦点；语音键继续只负责按住听写，不再在每次录音时抢占焦点。
+- [PR #8](https://github.com/LightyearXizIl/Nexus-Prime/pull/8)：ChatGPT / Codex 预设新增“主页键”动作。单击主页键会启动或激活 ChatGPT 桌面版，并把 `ProseMirror` 输入框设为焦点；语音键继续只负责按住听写，不再在每次录音时抢占焦点。
 
-- HID Tap Gadget 保留 `STATUS_PENDING` 读取请求，并依据 `IO_STATUS_BLOCK.Information` 恰好转发一次 RC003 报告；桥接重启会完整停止并重建 HID Tap 与 BLE worker。
+- [PR #7](https://github.com/LightyearXizIl/Nexus-Prime/pull/7)：HID Tap Gadget 保留 `STATUS_PENDING` 读取请求，并依据 `IO_STATUS_BLOCK.Information` 恰好转发一次 RC003 报告；桥接重启会完整停止并重建 HID Tap 与 BLE worker。
+
+- [Issue #6](https://github.com/LightyearXizIl/Nexus-Prime/issues/6)：修复 RC003 TV 键的原生字符穿透。遥控器 HID `0x35` 被 Windows 翻译为反引号时，低级钩子先缓存 `VK_OEM_3` 候选事件最多 120ms；确认收到设备专属 TV 信号后丢弃，否则以带应用标记的 `SendInput` 回放。TV 映射为“未绑定”时也会抑制原始键，不再向中文输入法输入「·」或向英文输入框输入 `` ` ``。实体键盘反引号仅在遥控器桥接活动时有最多 120ms 的首次判定延迟。
+
+### 验证边界
+
+- Gadget 测试 9/9、前端 52/52、Rust 140 通过，另有 RC003 实机与 ChatGPT 桌面版 smoke 两项按环境要求 ignored；生产构建、Cargo workspace 全目标检查及本地 NSIS 打包通过。RC003 真机中英文输入、实体键盘反引号和蓝牙重连回归仍待验收。
+
+### 兼容性
+
+- 本次发布版本为 `0.4.2`；未采用 PR #8 分支中的 `0.4.3` 版本号。未修改用户 JSON 配置、ATVV、音频、WinUHid 或既有按键映射格式。
 
 ## [0.4.1] - 2026-09-07
 

@@ -12,6 +12,7 @@ pub(crate) mod hook_bump;
 pub mod key_mapping;
 pub mod special_keys;
 pub mod tv_gate;
+pub(crate) mod tv_native_guard;
 pub mod voice_pcm;
 pub mod voice_meter;
 pub(crate) mod voice_chord_state;

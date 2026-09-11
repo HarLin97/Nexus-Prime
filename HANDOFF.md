@@ -2,12 +2,31 @@
 
 更新时间：2026-09-11
 
+## Issue #6：RC003 TV 键原生字符穿透修复（2026-09-11）
+
+- 根因已落实：RC003 TV 键的 HID Usage `0x35` 被 Windows 同时翻译为 `VK_OEM_3`，因此英文输入框得到反引号，中文输入法得到间隔号；清空应用内映射只能停止二次动作，不能阻止遥控器原始键。
+- 新增内部 `tv_native_guard`：低级键盘钩子收到 `VK_OEM_3 + scan 0x29` 时先非阻塞缓存，最多等待 120ms。HID Tap 的 TV DOWN 在配置、TV gate 和 `KeyAction::None` 前立即确认遥控器来源；确认后丢弃整次原始按压，超时则用带 `EXTRA_INFO` 的 SendInput 按原顺序回放实体键盘事件。队列满、钩子停止、断连和异常均采用 fail-open 回放，避免丢键或粘键。
+- TV 的原生键抑制不再依赖是否存在单击、连击或长按映射；语音 F5、方向、菜单、音量、ATVV、WinUHid、配置格式和公开命令均未改动。发布版本已同步为 `0.4.2`。
+- 本地 NSIS 安装包已重新构建：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.2_x64-setup.exe`，13,350,889 bytes，SHA-256 `E1430D75D52C7EB5C6BDCD4432076018943E1A6A18E1FFC95176084E86C587BB`；主程序与安装包产品版本均为 `0.4.2`。`latest.json` 已写入对应 tag、下载名、大小和摘要；tag、Release 与远端下载核验结果将在发布完成后记录。
+
+### 本次验证
+
+- `npm.cmd test`：Gadget 9/9、前端 13 个文件 52/52 通过。
+- `npm.cmd run build`、`cargo test --workspace --manifest-path src-tauri/Cargo.toml`、`cargo check --workspace --all-targets --manifest-path src-tauri/Cargo.toml` 和 `git diff --check`：通过；Rust 为 140 通过、2 项按环境要求 ignored（RC003/WUDFHost 与 ChatGPT 桌面版）。
+- 新增状态机覆盖候选事件先到、TV 信号先到、短按回放、迟到信号、重复按键、队列满和远端释放超时清理；自动化证明逻辑，不代替真实硬件验收。
+
+### 仍待真实设备验收
+
+- 在记事本和聊天输入框中，分别使用中英文输入法连续按 RC003 TV 键 20 次；默认映射、自定义映射和“未绑定”三种状态均不得出现「·」或 `` ` ``，且设置的 TV 动作只能执行一次。GitHub Issue #6 当前已关闭，但这项真机验收仍未完成；若复现，须重新打开该议题并附上日志。
+- 遥控器桥接活动时验证实体键盘 `` ` ``、Shift+`` ` ``、快速连按和长按可用且无粘键；允许首次按下最多 120ms 的判定延迟。
+- 验证重启按键桥接、蓝牙断连重连后仍满足上述行为，并回归方向、确认、菜单、音量和语音键。真机验收完成前，不应仅以 GitHub Issue #6 已关闭作为硬件问题完全修复的依据。
+
 ## 全项目复核（2026-09-11）
 
 - 随后合并 PR #7、#8 的功能整合已在本地完成，发布版本仍保持 `0.4.1`；未采用 PR 中的 `0.4.2` 或 `0.4.3`。
 - 合并后的验证：Gadget 测试 9/9、前端 52/52、Rust 133/133 通过；2 个需要真实 RC003/ChatGPT 环境的测试按设计 ignored；前端生产构建、Cargo 全目标检查和 `git diff --check` 通过。未执行新的 Tauri 安装包发布，不能据此宣称新安装包或远程 Release 已更新。
 
-- 本次以 `E:\Vibe coding\Nexus Prime\Nexus Prime-repo` 为交接与后续开发基准。该副本 Git 状态干净，当前 `HEAD` 为 `aff2ff9`，与 `origin/main` 同步；版本号为 `0.4.1`。外层目录中的 `Nexus Prime` 副本仍不作为 Git 写入目标，原因是历史上出现过 `fatal: bad object HEAD`。
+- 本次以 `E:\Vibe coding\Nexus Prime\Nexus Prime-repo` 为交接与后续开发基准。实施本修复前的同步基线为 `c338057`（`origin/main`），版本号为 `0.4.1`；外层目录中的 `Nexus Prime` 副本仍不作为 Git 写入目标，原因是历史上出现过 `fatal: bad object HEAD`。
 - 已复核项目结构：Vue/Vite 前端位于 `src/`（29 个 TypeScript、11 个 Vue 文件），Tauri/Rust 后端位于 `src-tauri/src/`（46 个 Rust 文件），核心模块覆盖配置管理、日志、更新器、BLE/UDP 遥控器桥接、HID/WinUHid 注入、按键映射、ATVV 音频、VB-CABLE、托盘与自启动；`src-tauri/assets/` 保存 WinUHid 和音频相关安装资源，`public/` 与 `src-tauri/icons/` 保存网页、桌面及移动端图标资源。
 - 已对 `README.md`、`CHANGELOG.md`、`CONTRIBUTING.md`、`THIRD_PARTY_NOTICES.md`、`package.json`、Cargo 配置及当前源代码进行交叉检查。当前文档最新发布范围均为 v0.4.1；没有发现 v0.4.1 之后的代码提交或未记录的 Git 改动。
 

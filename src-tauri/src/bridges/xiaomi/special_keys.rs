@@ -6,6 +6,7 @@ use crate::bridges::xiaomi::key_mapping::{
     direct_signal_recent, note_passthrough_f5_down, on_uncorrelated_f5_down,
     should_suppress_voice_f5, EXTRA_INFO,
 };
+use crate::bridges::xiaomi::tv_native_guard::{self, CandidateAction, TvNativeEvent};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use std::time::Duration;
@@ -138,6 +139,7 @@ pub fn start_special_key_hook() {
 
 pub fn stop_special_key_hook() {
     HID_TAP_READY.store(false, Ordering::Release);
+    replay_tv_events_async(tv_native_guard::reset(), "hook_stop");
     if !RUNNING.swap(false, Ordering::AcqRel) {
         return;
     }
@@ -152,6 +154,117 @@ pub fn stop_special_key_hook() {
         }
     }
     log::info!("XIAOMI SPECIAL KEY hook stop requested");
+}
+
+/// HID Tap 识别到 RC003 TV 键后立即调用。它必须在配置读取、TV gate 或
+/// `KeyAction::None` 之前发生，否则 Windows 的 OEM_3 原键会先写入输入框。
+pub fn note_remote_tv_signal(pressed: bool) {
+    let outcome = tv_native_guard::on_remote_tv_signal(pressed);
+    if let Some(generation) = outcome.release_deadline_generation {
+        spawn_tv_deadline(generation);
+    }
+    if pressed {
+        if let Some(elapsed) = outcome.elapsed {
+            log::info!(
+                "XIAOMI TV native confirmed dropped={} elapsed_ms={}",
+                outcome.dropped_events,
+                elapsed.as_millis()
+            );
+        } else {
+            log::debug!(
+                "XIAOMI TV native direct signal dropped={}",
+                outcome.dropped_events
+            );
+        }
+    }
+}
+
+fn spawn_tv_deadline(generation: u64) {
+    let _ = std::thread::Builder::new()
+        .name(format!("xiaomi-tv-native-{generation}"))
+        .spawn(move || {
+            std::thread::sleep(tv_native_guard::TV_CORRELATION_WINDOW);
+            if let Some(events) = tv_native_guard::on_deadline(generation) {
+                log::info!(
+                    "XIAOMI TV native timeout replay count={} elapsed_ms={}",
+                    events.len(),
+                    tv_native_guard::TV_CORRELATION_WINDOW.as_millis()
+                );
+                replay_tv_events(events, "timeout");
+            }
+        });
+}
+
+fn handle_tv_native_candidate(down: bool) -> bool {
+    match tv_native_guard::on_native_candidate(down) {
+        CandidateAction::Swallow {
+            deadline_generation,
+        } => {
+            if let Some(generation) = deadline_generation {
+                log::debug!("XIAOMI TV native candidate queued down={down}");
+                spawn_tv_deadline(generation);
+            }
+            true
+        }
+        CandidateAction::ReplayAndSwallow(events) => {
+            log::warn!(
+                "XIAOMI TV native candidate queue overflow replay count={}",
+                events.len()
+            );
+            replay_tv_events_async(events, "queue_overflow");
+            true
+        }
+        CandidateAction::PassThrough => false,
+    }
+}
+
+fn replay_tv_events_async(events: Vec<TvNativeEvent>, reason: &'static str) {
+    if events.is_empty() {
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("xiaomi-tv-native-replay".into())
+        .spawn(move || replay_tv_events(events, reason));
+}
+
+#[cfg(target_os = "windows")]
+fn replay_tv_events(events: Vec<TvNativeEvent>, reason: &str) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    };
+
+    let mut replayed = 0usize;
+    for event in events {
+        let flags = if event.down {
+            Default::default()
+        } else {
+            KEYEVENTF_KEYUP
+        };
+        let input = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(0xC0),
+                    wScan: 0x29,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: EXTRA_INFO,
+                },
+            },
+        };
+        let sent = unsafe { SendInput(std::slice::from_ref(&input), std::mem::size_of::<INPUT>() as i32) };
+        if sent == 1 {
+            replayed += 1;
+        } else {
+            log::warn!("XIAOMI TV native replay failed reason={reason} down={}", event.down);
+        }
+    }
+    log::info!("XIAOMI TV native replay reason={reason} sent={replayed}");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn replay_tv_events(events: Vec<TvNativeEvent>, reason: &str) {
+    let _ = (events, reason);
 }
 
 #[cfg(target_os = "windows")]
@@ -265,6 +378,12 @@ fn hook_loop() {
             let scan = info.scanCode;
             let tap_ready = HID_TAP_READY.load(Ordering::Acquire);
 
+            // RC003 TV 的 HID usage 0x35 会被 Windows 翻译为 OEM_3/反引号。
+            // 钩子没有设备句柄，故先短暂缓存，等待 HID Tap 的设备专属 TV 信号。
+            if vk == 0xC0 && scan == 0x29 && (down || up) && handle_tv_native_candidate(down) {
+                return LRESULT(1);
+            }
+
             // 对齐 Python：音量仅在 Tap 就绪后抑制；其它键在 recent 信号时抑制
             let suppress = match vk {
                 0xAF if tap_ready
@@ -310,10 +429,6 @@ fn hook_loop() {
                     || direct_signal_recent("dpad_down", Duration::from_millis(200)) =>
                 {
                     Some("down")
-                }
-                // TV: OEM_3 + scan 0x29
-                0xC0 if scan == 0x29 && direct_signal_recent("tv", Duration::from_millis(250)) => {
-                    Some("tv")
                 }
                 // Power: Sleep / 0xFF / scan 0x5E
                 0x5F | 0xFF if direct_signal_recent("power", Duration::from_millis(250)) => {
