@@ -10,7 +10,8 @@
 - Gadget 已恢复升级前验证过的同步成功读取规则：`NtDeviceIoControlFile` 立即返回成功且调用方请求恰为 9 字节时直接转发报告，不再强制依赖此刻可能仍旧的 `IO_STATUS_BLOCK.Information`；异步 `STATUS_PENDING` 路径仍要求完成状态与内核报告的 9 字节长度。Rust hub 同时记录 `pending/completed/failed` 遥测变化，便于下一次真机日志区分“没有命中 IOCTL”和“命中但长度/完成状态异常”。
 - VB-CABLE“自动修复”改为一次 UAC 确认后的全自动流程：管理员助手再次校验官方 x64/x86 Setup 的固定 SHA-256，只识别并点击 `Install Driver` 和包含明确成功/失败文字的结果确认按钮，随后自动探测端点并校正默认麦克风。只看到 `Remove Driver` 时安全停止并提示重启，绝不自动卸载或覆盖现有驱动；未采用官方文档没有确认的静默参数。
 - 自动化：Gadget 10/10、前端 60/60、Rust 146 通过且 2 项环境 smoke ignored；前端生产构建、Cargo workspace 全目标检查、Tauri release 与 NSIS/MSI 打包、`git diff --check` 通过。另在当前 WinUHid 正常的机器上，用带 `-Force` 的修复脚本实测得到 `already reachable; skip live driver rebind`、退出码 0，未新增系统错误事件。
-- 本地 NSIS 候选包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.6_x64-setup.exe`，13,367,506 bytes，SHA-256 `4485EFD12C7493E80450CCC0BAED77B60206DB6615DD2C4AF293C7BCE5C8B1FD`；主程序与安装包产品版本均为 `0.4.6`，均未签名。此时尚未提交、打标签、推送或创建 GitHub Release。
+- 本地 NSIS 包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.6_x64-setup.exe`，13,367,506 bytes，SHA-256 `4485EFD12C7493E80450CCC0BAED77B60206DB6615DD2C4AF293C7BCE5C8B1FD`；主程序与安装包产品版本均为 `0.4.6`，均未签名。发布源提交/注释标签为 `b04567095b4b458bbc5ab945a2c27c31b99939de` / `v0.4.6`，远端 `main` 与解引用标签均指向该提交。
+- GitHub 正式 Release [`v0.4.6`](https://github.com/LightyearXizIl/Nexus-Prime/releases/tag/v0.4.6) 已公开且不是草稿或预发布；安装包与 `latest.json` 均为 `uploaded`。Release 资产、Release 清单和 `main/latest.json` 的安装包大小与摘要一致；另从公开下载地址重新下载安装包后复算，仍为 13,367,506 bytes 和同一 SHA-256。
 - 仍待真实 RC003 验收：普通方向/确认/主页/菜单/音量/返回至少各 10 次，日志应出现 `HID TAP READY` 与实际 `HID TAP key=...`；再验证语音键和自定义映射无回归。VB-CABLE 自动化已通过代码与状态机测试，但未在本轮对当前机器重新安装驱动，以免把发布构建测试和真实驱动生命周期混为一谈；不得为了验证防护而再次在已发布 v0.4.5 中点击“修复虚拟键盘”。
 
 ## v0.4.5：千问四种语音快捷键（2026-09-12）
