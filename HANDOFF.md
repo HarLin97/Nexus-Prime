@@ -2,6 +2,17 @@
 
 更新时间：2026-09-12
 
+## v0.4.6：虚拟键盘蓝屏、普通按键与声卡全自动修复（2026-09-12）
+
+- 用户日志与 Windows 本机证据确认：20:12:35 点击“修复虚拟键盘”后，旧实现以 `force=true` 进入 WinUHid `DIF_INSTALLDEVICE` 重绑；20:13:13 Windows 记录 `0x000000D1 DRIVER_IRQL_NOT_LESS_OR_EQUAL` 并生成 `C:\Windows\Minidump\091226-9953-01.dmp`。WER 故障桶为 `AV_vbaudio_cable64_win10!unknown_function`。9 月 11 日的另一次同类转储也是相同故障桶，因此这是 VB-CABLE 内核驱动在该 PnP 重扫链上的可重复崩溃，不是普通应用重启，也不能仅凭点击来源归因给 WinUHid。
+- 虚拟键盘修复已改为安全幂等：应用层先刷新用户态 DLL/注入器并检查 WinUHid；设备已就绪时直接返回“无需重装”，不提升权限、不重绑驱动。PowerShell 安装脚本在普通入口和提升权限入口再次检查 `\\.\WinUHid`，即使旧调用方仍传 `-Force`，设备可访问时也会跳过 `DIF_INSTALLDEVICE` 与 `/scan-devices`。
+- “除语音键外普通键全部失灵”是另一条证据链：升级后的日志持续停在 `XIAOMI HID TAP ATTACHED ... awaiting_io=true`，没有 `HID TAP READY`，但启动逻辑只按“Tap 线程已启动”就跳过 Raw Input 备用路由；方向、确认、主页等只能被 VK 诊断记录为 `(no map)`。语音键独立走 ATVV，所以仍可用。历史日志显示 9 月 11 日加载新版 Gadget 之前能进入 `HID TAP READY`，之后没有成功记录。
+- Gadget 已恢复升级前验证过的同步成功读取规则：`NtDeviceIoControlFile` 立即返回成功且调用方请求恰为 9 字节时直接转发报告，不再强制依赖此刻可能仍旧的 `IO_STATUS_BLOCK.Information`；异步 `STATUS_PENDING` 路径仍要求完成状态与内核报告的 9 字节长度。Rust hub 同时记录 `pending/completed/failed` 遥测变化，便于下一次真机日志区分“没有命中 IOCTL”和“命中但长度/完成状态异常”。
+- VB-CABLE“自动修复”改为一次 UAC 确认后的全自动流程：管理员助手再次校验官方 x64/x86 Setup 的固定 SHA-256，只识别并点击 `Install Driver` 和包含明确成功/失败文字的结果确认按钮，随后自动探测端点并校正默认麦克风。只看到 `Remove Driver` 时安全停止并提示重启，绝不自动卸载或覆盖现有驱动；未采用官方文档没有确认的静默参数。
+- 自动化：Gadget 10/10、前端 60/60、Rust 146 通过且 2 项环境 smoke ignored；前端生产构建、Cargo workspace 全目标检查、Tauri release 与 NSIS/MSI 打包、`git diff --check` 通过。另在当前 WinUHid 正常的机器上，用带 `-Force` 的修复脚本实测得到 `already reachable; skip live driver rebind`、退出码 0，未新增系统错误事件。
+- 本地 NSIS 候选包：`src-tauri/target/release/bundle/nsis/Nexus Prime_0.4.6_x64-setup.exe`，13,367,506 bytes，SHA-256 `4485EFD12C7493E80450CCC0BAED77B60206DB6615DD2C4AF293C7BCE5C8B1FD`；主程序与安装包产品版本均为 `0.4.6`，均未签名。此时尚未提交、打标签、推送或创建 GitHub Release。
+- 仍待真实 RC003 验收：普通方向/确认/主页/菜单/音量/返回至少各 10 次，日志应出现 `HID TAP READY` 与实际 `HID TAP key=...`；再验证语音键和自定义映射无回归。VB-CABLE 自动化已通过代码与状态机测试，但未在本轮对当前机器重新安装驱动，以免把发布构建测试和真实驱动生命周期混为一谈；不得为了验证防护而再次在已发布 v0.4.5 中点击“修复虚拟键盘”。
+
 ## v0.4.5：千问四种语音快捷键（2026-09-12）
 
 - 千问输入法设置弹窗现可独立应用左 Ctrl、左 Ctrl + 左 Win、左 Win + 左 Alt、右 Alt 四种按住说话快捷键；不会读取或修改千问输入法自身配置，用户需手动选择两端一致的组合。

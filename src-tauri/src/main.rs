@@ -13,6 +13,10 @@ fn main() {
             let code = nexus_prime_lib::audio::pcm_router::run_audio_router_cli(&args);
             std::process::exit(code);
         }
+        Some(nexus_prime_lib::audio::vb_cable::AUTO_INSTALL_HELPER_ARGUMENT) => {
+            let code = nexus_prime_lib::audio::vb_cable::run_official_installer_helper_cli(&args);
+            std::process::exit(code);
+        }
         _ => nexus_prime_lib::run(),
     }
 }

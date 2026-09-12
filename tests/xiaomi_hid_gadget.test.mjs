@@ -180,6 +180,14 @@ test("emits an immediate successful HID report once", async () => {
   assert.deepEqual(gadget.gattReads(), ["010000280000000000"]);
 });
 
+test("keeps the proven immediate-success path when Information is stale", async () => {
+  const gadget = await loadGadget();
+  const state = { id: 7, status: STATUS_SUCCESS, information: 0 };
+  gadget.invoke(state, REPORT, STATUS_SUCCESS);
+  await flushPromises();
+  assert.deepEqual(gadget.gattReads(), ["010000280000000000"]);
+});
+
 test("waits for STATUS_PENDING completion and then emits", async () => {
   const gadget = await loadGadget();
   const state = { id: 2, status: STATUS_PENDING, information: 0 };
@@ -236,10 +244,13 @@ test("registers a 10 ms pending completion sweep", async () => {
   assert.ok(gadget.intervalDelays().includes(10));
 });
 
-test("uses IO_STATUS_BLOCK.Information as the completed byte count", async () => {
+test("uses IO_STATUS_BLOCK.Information for pending completions", async () => {
   const gadget = await loadGadget();
-  const state = { id: 6, status: STATUS_SUCCESS, information: 8 };
-  gadget.invoke(state, REPORT, STATUS_SUCCESS);
+  const state = { id: 6, status: STATUS_PENDING, information: 0 };
+  gadget.invoke(state, REPORT, STATUS_PENDING);
+  state.status = STATUS_SUCCESS;
+  state.information = 8;
+  gadget.runPendingSweep();
   await flushPromises();
   assert.deepEqual(gadget.gattReads(), []);
 });

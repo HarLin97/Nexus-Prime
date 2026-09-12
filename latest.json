@@ -1,16 +1,16 @@
 {
-  "tag_name": "v0.4.5",
-  "name": "Nexus Prime v0.4.5",
-  "body": "- 千问输入法新增左 Ctrl、左 Ctrl + 左 Win、左 Win + 左 Alt、右 Alt 四种按住说话快捷键。\n- 四种组合均优先使用虚拟键盘，松手直接释放原组合，不额外发送 Enter、Space 或 F24。",
+  "tag_name": "v0.4.6",
+  "name": "Nexus Prime v0.4.6",
+  "body": "- 修复虚拟键盘强制重绑触发系统蓝屏重启的问题；WinUHid 已可用时不再重装或扫描设备。\n- 修复语音键可用但方向、确认等普通按键全部失灵的问题，并新增 HID Tap 完成状态遥测。\n- 虚拟声卡自动修复在确认一次 UAC 后自动完成官方安装器点击、端点检测与默认麦克风校正。",
   "published_at": null,
   "draft": false,
   "prerelease": false,
   "assets": [
     {
-      "name": "Nexus.Prime_0.4.5_x64-setup.exe",
-      "size": 13360573,
-      "digest": "sha256:60b604377a23bb16a1ef7e71ebc947178e14ea773d26361b4e20ef1201fc9b5e",
-      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.5/Nexus.Prime_0.4.5_x64-setup.exe"
+      "name": "Nexus.Prime_0.4.6_x64-setup.exe",
+      "size": 13367506,
+      "digest": "sha256:4485efd12c7493e80450ccc0baed77b60206db6615dd2c4af293c7bce5c8b1fd",
+      "browser_download_url": "https://github.com/LightyearXizIl/Nexus-Prime/releases/download/v0.4.6/Nexus.Prime_0.4.6_x64-setup.exe"
     }
   ]
 }

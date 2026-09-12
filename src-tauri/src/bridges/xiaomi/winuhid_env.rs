@@ -144,7 +144,22 @@ pub struct WinUHidRepairResult {
 }
 
 pub fn repair() -> Result<WinUHidRepairResult, String> {
-    match run_installer(true)? {
+    // Rebinding a live root-enumerated HID driver is not a harmless health check.
+    // On machines that also have VB-CABLE installed it forces a PnP rescan, and
+    // we have real crash dumps where that rescan bugchecked inside
+    // vbaudio_cable64_win10. If the WinUHid device can already be opened, refresh
+    // only the user-mode SDK and leave the kernel device stack untouched.
+    ensure_runtime_quiet();
+    if crate::bridges::xiaomi::hid_injector::is_available() {
+        log::info!("WinUHid repair skipped: virtual keyboard already ready");
+        return Ok(WinUHidRepairResult {
+            ready: true,
+            restart_required: false,
+            message: "虚拟键盘已经就绪，无需重装驱动。已安全刷新键盘注入状态。".into(),
+        });
+    }
+
+    match run_installer(false)? {
         InstallOutcome::Ready => Ok(WinUHidRepairResult {
             ready: true,
             restart_required: false,

@@ -1,5 +1,17 @@
 # 更新日志
 
+## [0.4.6] - 2026-09-12
+
+### 修复
+
+- “修复虚拟键盘”在 WinUHid 已可用时改为安全幂等检查，不再强制重绑驱动或触发 PnP 全量扫描，规避已确认会牵连 `vbaudio_cable64_win10` 蓝屏重启的修复链。
+- 修复新版 Xiaomi HID Gadget 同步读取成功时因 `IO_STATUS_BLOCK.Information` 尚未刷新而丢弃普通按键的问题；异步读取仍严格校验完成状态与报告长度，并新增 pending/completed/failed 遥测。
+- VB-CABLE 自动修复改为一次 UAC 确认后的全自动流程：二次校验官方 Setup 哈希，只点击“Install Driver”及明确的结果确认按钮，安装后自动探测端点并校正默认麦克风；检测到“Remove Driver”时停止，不自动卸载已有驱动。
+
+### 验证边界
+
+- 自动化覆盖 VB-CABLE 安装按钮选择、安全停止、结果确认，Gadget 同步/异步读取和 WinUHid 幂等防护；Gadget 10/10、前端 60/60、Rust 146 通过，另有 2 项真实环境 smoke ignored，前端生产构建、Cargo workspace 全目标检查与 NSIS/MSI 打包通过。真实 VB-CABLE 驱动安装、RC003 普通按键及重启后的系统状态仍需在目标机器验收，不能由自动化替代。
+
 ## [0.4.5] - 2026-09-12
 
 ### 新增

@@ -77,7 +77,7 @@ function removePending(context) {
   }
 }
 
-function finishIoContext(context, status) {
+function finishIoContext(context, status, immediate = false) {
   if (status === STATUS_PENDING) return false;
   removePending(context);
   if (status !== STATUS_SUCCESS) {
@@ -85,7 +85,14 @@ function finishIoContext(context, status) {
     return true;
   }
 
-  const actualLength = ioInformation(context.statusBlock);
+  // On this RC003/WUDF path an immediately successful call historically
+  // delivered the nine-byte report reliably even when IO_STATUS_BLOCK.Information
+  // was not yet the expected value at our return hook. v0.4.2 made Information
+  // mandatory for every completion and live logs then stopped reaching HID TAP
+  // READY altogether. Preserve the proven immediate-success contract (the caller
+  // requested exactly one nine-byte report); pending completions still require
+  // the kernel-reported completed byte count before their buffer is trusted.
+  const actualLength = immediate ? context.outputLength : ioInformation(context.statusBlock);
   completedIo += 1;
   if (
     !context.output.isNull() &&
@@ -169,7 +176,7 @@ function installHook() {
           }
           return;
         }
-        finishIoContext(this.ioContext, status);
+        finishIoContext(this.ioContext, status, true);
       } catch (_error) {
         removePending(this.ioContext);
         failedIo += 1;

@@ -216,6 +216,14 @@ try {
     }
     'InstallElevated' {
       if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator rights are required' }
+      # Defense in depth: never rebind a live kernel device. The old -Force path
+      # could reach DIF_INSTALLDEVICE even when \\.\WinUHid was healthy, which
+      # triggers a system-wide PnP rescan and can crash an unrelated filter/driver.
+      if (Test-WinUHidDevice) {
+        Write-Phase 'Verify' 'already reachable; skip live driver rebind'
+        Write-Output 'Result: OK'
+        exit 0
+      }
       foreach ($name in @('WinUHidDriver.inf', 'WinUHidDriver.dll', 'WinUHidDriver.cat')) {
         if (-not (Test-Path -LiteralPath (Join-Path $PackageDir $name))) { throw "Missing driver package file: $name" }
       }
@@ -242,7 +250,7 @@ try {
       exit 3010
     }
     'Install' {
-      if ((Test-WinUHidDevice) -and -not $Force) { Write-Phase 'Verify' 'already reachable'; Write-Output 'Result: OK'; exit 0 }
+      if (Test-WinUHidDevice) { Write-Phase 'Verify' 'already reachable; skip live driver rebind'; Write-Output 'Result: OK'; exit 0 }
       $code = Invoke-ElevatedInstall
       if (Test-WinUHidDevice) { Write-Phase 'Verify' 'reachable after elevated install'; Write-Output 'Result: OK'; exit 0 }
       if ($code -eq 3010 -or $script:RestartRequired -or (Test-Path -LiteralPath $RebootFlag)) { Write-Phase 'Verify' 'restart required'; Write-Output 'Result: RESTART_REQUIRED'; exit 3010 }

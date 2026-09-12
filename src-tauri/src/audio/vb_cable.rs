@@ -60,6 +60,16 @@ static OFFICIAL_INSTALLER_RUNNING: AtomicBool = AtomicBool::new(false);
 
 const OFFICIAL_STAGE_DIR_NAME: &str = "vb-cable-official-stage";
 const OFFICIAL_STAGE_MARKER: &str = ".zip.sha256";
+const OFFICIAL_SETUP_X64_SHA256: &str =
+    "734c35dfa6d98f48782a451633ceb471166ec70d60482fd89a1123d0ee3c4f41";
+const OFFICIAL_SETUP_X86_SHA256: &str =
+    "01ffc86b623ff3c75a883aa900c0215a89482988e1c8e55988fc0a9fb513dbed";
+pub const AUTO_INSTALL_HELPER_ARGUMENT: &str = "vbcable-auto-install";
+
+const HELPER_ALREADY_INSTALLED: u32 = 19_968;
+const HELPER_INSTALLER_ERROR: u32 = 19_969;
+const HELPER_UI_TIMEOUT: u32 = 19_970;
+const HELPER_LAUNCH_FAILED: u32 = 19_971;
 
 struct InstallerRunGuard;
 
@@ -211,6 +221,24 @@ fn official_setup_fallback_exe_name() -> &'static str {
     }
 }
 
+fn expected_official_setup_hash(path: &Path) -> Option<&'static str> {
+    let name = path.file_name()?.to_str()?;
+    if name.eq_ignore_ascii_case("VBCABLE_Setup_x64.exe") {
+        Some(OFFICIAL_SETUP_X64_SHA256)
+    } else if name.eq_ignore_ascii_case("VBCABLE_Setup.exe") {
+        Some(OFFICIAL_SETUP_X86_SHA256)
+    } else {
+        None
+    }
+}
+
+fn official_setup_is_valid(path: &Path) -> bool {
+    let Some(expected) = expected_official_setup_hash(path) else {
+        return false;
+    };
+    matches!(sha256_file(path), Ok(actual) if actual.eq_ignore_ascii_case(expected))
+}
+
 fn app_data_root() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
@@ -245,8 +273,9 @@ fn staged_setup_if_valid(stage: &Path, zip_hash: &str) -> Option<PathBuf> {
     if !marker_hash.trim().eq_ignore_ascii_case(zip_hash) {
         return None;
     }
-    find_named_file(stage, official_setup_exe_name())
-        .or_else(|| find_named_file(stage, official_setup_fallback_exe_name()))
+    let setup = find_named_file(stage, official_setup_exe_name())
+        .or_else(|| find_named_file(stage, official_setup_fallback_exe_name()))?;
+    official_setup_is_valid(&setup).then_some(setup)
 }
 
 fn extract_official_driver_zip(zip: &Path, destination: &Path) -> Result<(), String> {
@@ -325,6 +354,9 @@ fn stage_official_setup(zip: &Path) -> Result<PathBuf, String> {
         let setup = find_named_file(&pending, official_setup_exe_name())
             .or_else(|| find_named_file(&pending, official_setup_fallback_exe_name()))
             .ok_or_else(|| "官方 VB-CABLE 包中未找到 Setup 安装器".to_string())?;
+        if !official_setup_is_valid(&setup) {
+            return Err("VB-CABLE 官方 Setup 安装器 SHA-256 校验失败".into());
+        }
         std::fs::write(pending.join(OFFICIAL_STAGE_MARKER), &zip_hash)
             .map_err(|error| format!("写入 VB-CABLE 暂存校验标记失败: {error}"))?;
         Ok::<PathBuf, String>(setup)
@@ -344,53 +376,329 @@ fn stage_official_setup(zip: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| "VB-CABLE 暂存完成后无法验证官方安装器".to_string())
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+struct InstallerUiFacts {
+    has_install_button: bool,
+    has_remove_button: bool,
+    has_ok_button: bool,
+    reports_success: bool,
+    reports_error: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum InstallerUiAction {
+    Wait,
+    ClickInstall,
+    ConfirmSuccess,
+    ConfirmError,
+    AlreadyInstalled,
+    Timeout,
+}
+
+fn installer_ui_action(
+    facts: &InstallerUiFacts,
+    install_clicked: bool,
+    elapsed: Duration,
+) -> InstallerUiAction {
+    if install_clicked && facts.reports_error && facts.has_ok_button {
+        InstallerUiAction::ConfirmError
+    } else if install_clicked && facts.reports_success && facts.has_ok_button {
+        InstallerUiAction::ConfirmSuccess
+    } else if !install_clicked && facts.has_install_button {
+        InstallerUiAction::ClickInstall
+    } else if !install_clicked && facts.has_remove_button && elapsed >= Duration::from_secs(2) {
+        InstallerUiAction::AlreadyInstalled
+    } else if !install_clicked && elapsed >= Duration::from_secs(45) {
+        InstallerUiAction::Timeout
+    } else {
+        InstallerUiAction::Wait
+    }
+}
+
 #[cfg(target_os = "windows")]
-fn launch_gui_exe_and_wait(exe: &Path) -> Result<u32, String> {
+mod official_installer_helper {
+    use super::{
+        installer_ui_action, official_setup_is_valid, InstallerUiAction, InstallerUiFacts,
+        HELPER_ALREADY_INSTALLED, HELPER_INSTALLER_ERROR, HELPER_LAUNCH_FAILED, HELPER_UI_TIMEOUT,
+    };
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumChildWindows, EnumWindows, GetClassNameW, GetWindowTextW, GetWindowThreadProcessId,
+        PostMessageW, SendMessageW,
+    };
+
+    const BM_CLICK: u32 = 0x00f5;
+    const WM_CLOSE: u32 = 0x0010;
+
+    #[derive(Default)]
+    struct InstallerWindows {
+        pid: u32,
+        top_level: Vec<HWND>,
+        install_button: Option<HWND>,
+        remove_button: Option<HWND>,
+        ok_button: Option<HWND>,
+        reports_success: bool,
+        reports_error: bool,
+    }
+
+    impl InstallerWindows {
+        fn facts(&self) -> InstallerUiFacts {
+            InstallerUiFacts {
+                has_install_button: self.install_button.is_some(),
+                has_remove_button: self.remove_button.is_some(),
+                has_ok_button: self.ok_button.is_some(),
+                reports_success: self.reports_success,
+                reports_error: self.reports_error,
+            }
+        }
+
+        fn click(&self, hwnd: Option<HWND>) {
+            if let Some(hwnd) = hwnd {
+                unsafe {
+                    SendMessageW(hwnd, BM_CLICK, WPARAM(0), LPARAM(0));
+                }
+            }
+        }
+
+        fn close_all(&self) {
+            for hwnd in &self.top_level {
+                let _ = unsafe { PostMessageW(*hwnd, WM_CLOSE, WPARAM(0), LPARAM(0)) };
+            }
+        }
+    }
+
+    fn window_text(hwnd: HWND) -> String {
+        let mut buffer = [0u16; 512];
+        let length = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+        String::from_utf16_lossy(&buffer[..length.max(0) as usize])
+    }
+
+    fn window_class(hwnd: HWND) -> String {
+        let mut buffer = [0u16; 128];
+        let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
+        String::from_utf16_lossy(&buffer[..length.max(0) as usize])
+    }
+
+    fn observe_text(state: &mut InstallerWindows, text: &str) {
+        if text.contains("Installation Complete and Successful")
+            || text.contains("Reboot your system to secure the installation")
+        {
+            state.reports_success = true;
+        }
+        if text.contains("Installation Error") || text.contains("Missing 'inf' file") {
+            state.reports_error = true;
+        }
+    }
+
+    unsafe extern "system" fn enum_child(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state = unsafe { &mut *(lparam.0 as *mut InstallerWindows) };
+        let text = window_text(hwnd);
+        observe_text(state, &text);
+        if window_class(hwnd).eq_ignore_ascii_case("Button") {
+            match text.trim() {
+                "Install Driver" if unsafe { IsWindowEnabled(hwnd).as_bool() } => {
+                    state.install_button = Some(hwnd)
+                }
+                "Remove Driver" if unsafe { IsWindowEnabled(hwnd).as_bool() } => {
+                    state.remove_button = Some(hwnd)
+                }
+                "OK" => state.ok_button = Some(hwnd),
+                _ => {}
+            }
+        }
+        BOOL(1)
+    }
+
+    unsafe extern "system" fn enum_top_level(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state = unsafe { &mut *(lparam.0 as *mut InstallerWindows) };
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid != state.pid {
+            return BOOL(1);
+        }
+        state.top_level.push(hwnd);
+        observe_text(state, &window_text(hwnd));
+        unsafe {
+            let _ = EnumChildWindows(hwnd, Some(enum_child), lparam);
+        }
+        BOOL(1)
+    }
+
+    fn inspect_installer_windows(pid: u32) -> InstallerWindows {
+        let mut state = InstallerWindows {
+            pid,
+            ..Default::default()
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(enum_top_level),
+                LPARAM((&mut state as *mut InstallerWindows) as isize),
+            );
+        }
+        state
+    }
+
+    fn close_and_reap(process: &mut std::process::Child) {
+        inspect_installer_windows(process.id()).close_all();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if matches!(process.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = process.kill();
+        let _ = process.wait();
+    }
+
+    pub fn run(setup: &Path) -> u32 {
+        if !official_setup_is_valid(setup) {
+            return HELPER_LAUNCH_FAILED;
+        }
+        let Some(parent) = setup.parent() else {
+            return HELPER_LAUNCH_FAILED;
+        };
+        let Ok(mut process) = std::process::Command::new(setup)
+            .current_dir(parent)
+            .spawn()
+        else {
+            return HELPER_LAUNCH_FAILED;
+        };
+
+        let started = Instant::now();
+        let mut install_clicked = false;
+        loop {
+            match process.try_wait() {
+                Ok(Some(status)) => {
+                    return status.code().unwrap_or(HELPER_INSTALLER_ERROR as i32) as u32;
+                }
+                Err(_) => return HELPER_INSTALLER_ERROR,
+                Ok(None) => {}
+            }
+
+            let windows = inspect_installer_windows(process.id());
+            match installer_ui_action(&windows.facts(), install_clicked, started.elapsed()) {
+                InstallerUiAction::ClickInstall => {
+                    windows.click(windows.install_button);
+                    install_clicked = true;
+                }
+                InstallerUiAction::ConfirmSuccess => {
+                    windows.click(windows.ok_button);
+                    std::thread::sleep(Duration::from_millis(250));
+                    close_and_reap(&mut process);
+                    return 0;
+                }
+                InstallerUiAction::ConfirmError => {
+                    windows.click(windows.ok_button);
+                    std::thread::sleep(Duration::from_millis(250));
+                    close_and_reap(&mut process);
+                    return HELPER_INSTALLER_ERROR;
+                }
+                InstallerUiAction::AlreadyInstalled => {
+                    close_and_reap(&mut process);
+                    return HELPER_ALREADY_INSTALLED;
+                }
+                InstallerUiAction::Timeout => {
+                    close_and_reap(&mut process);
+                    return HELPER_UI_TIMEOUT;
+                }
+                InstallerUiAction::Wait => {}
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
+
+pub fn run_official_installer_helper_cli(args: &[String]) -> i32 {
+    let Some(setup) = args.get(2).map(PathBuf::from) else {
+        return HELPER_LAUNCH_FAILED as i32;
+    };
+    #[cfg(target_os = "windows")]
+    {
+        official_installer_helper::run(&setup) as i32
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = setup;
+        HELPER_LAUNCH_FAILED as i32
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn launch_automated_installer_and_wait(exe: &Path) -> Result<u32, String> {
     use windows::core::HSTRING;
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-    let file = HSTRING::from(exe.as_os_str());
-    let directory = HSTRING::from(exe.parent().unwrap_or_else(|| Path::new(".")).as_os_str());
+    if !official_setup_is_valid(exe) {
+        return Err("拒绝启动：VB-CABLE 官方 Setup 安装器校验失败".into());
+    }
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("定位 Nexus Prime 安装助手失败: {error}"))?;
+    let verb = HSTRING::from("runas");
+    let file = HSTRING::from(current_exe.as_os_str());
+    let parameters = HSTRING::from(format!(
+        "{AUTO_INSTALL_HELPER_ARGUMENT} \"{}\"",
+        exe.display()
+    ));
+    let directory = HSTRING::from(
+        current_exe
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .as_os_str(),
+    );
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: windows::core::PCWSTR(verb.as_ptr()),
         lpFile: windows::core::PCWSTR(file.as_ptr()),
+        lpParameters: windows::core::PCWSTR(parameters.as_ptr()),
         lpDirectory: windows::core::PCWSTR(directory.as_ptr()),
         nShow: SW_SHOWNORMAL.0,
         ..Default::default()
     };
     unsafe {
         ShellExecuteExW(&mut info)
-            .map_err(|error| format!("启动 VB-CABLE 官方安装器失败: {error}"))?;
+            .map_err(|error| format!("启动 VB-CABLE 管理员安装助手失败: {error}"))?;
         let process = info.hProcess;
         if process.is_invalid() {
-            return Err("VB-CABLE 官方安装器未返回进程句柄".into());
+            return Err("VB-CABLE 管理员安装助手未返回进程句柄".into());
         }
         let waited = WaitForSingleObject(process, INFINITE);
         if waited != WAIT_OBJECT_0 {
             let _ = CloseHandle(process);
-            return Err(format!("等待 VB-CABLE 官方安装器失败: {waited:?}"));
+            return Err(format!("等待 VB-CABLE 管理员安装助手失败: {waited:?}"));
         }
         let mut exit_code = 0;
         GetExitCodeProcess(process, &mut exit_code)
-            .map_err(|error| format!("读取 VB-CABLE 安装器退出码失败: {error}"))?;
+            .map_err(|error| format!("读取 VB-CABLE 安装助手退出码失败: {error}"))?;
         let _ = CloseHandle(process);
         Ok(exit_code)
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn launch_gui_exe_and_wait(_exe: &Path) -> Result<u32, String> {
+fn launch_automated_installer_and_wait(_exe: &Path) -> Result<u32, String> {
     Err("仅 Windows 支持 VB-CABLE 官方安装器".into())
 }
 
 fn installer_result_code(exit_code: u32, ready: bool) -> &'static str {
-    if exit_code == 3010 || exit_code == 1641 {
+    if exit_code == HELPER_ALREADY_INSTALLED && !ready {
+        "voice_env.already_installed_reboot_required"
+    } else if exit_code == HELPER_INSTALLER_ERROR {
+        "voice_env.installer_failed"
+    } else if exit_code == HELPER_UI_TIMEOUT {
+        "voice_env.installer_automation_timeout"
+    } else if exit_code == HELPER_LAUNCH_FAILED {
+        "voice_env.installer_launch_failed"
+    } else if exit_code == 3010 || exit_code == 1641 {
         "voice_env.reboot_required"
-    } else if exit_code != 0 {
+    } else if exit_code != 0 && exit_code != HELPER_ALREADY_INSTALLED {
         "voice_env.installer_failed"
     } else if ready {
         "voice_env.ready"
@@ -704,7 +1012,7 @@ fn run_official_setup_installer() -> Result<VoiceEnvActionResult, String> {
     let zip = find_driver_zip().ok_or_else(|| "内嵌 VB-CABLE 驱动包不可用".to_string())?;
     let setup = stage_official_setup(&zip)?;
     log::info!("launch VB-CABLE official setup path={}", setup.display());
-    let exit_code = match launch_gui_exe_and_wait(&setup) {
+    let exit_code = match launch_automated_installer_and_wait(&setup) {
         Ok(code) => code,
         Err(error)
             if error.contains("1223")
@@ -741,7 +1049,8 @@ fn run_official_setup_installer() -> Result<VoiceEnvActionResult, String> {
     // 将最终结果写回缓存，避免安装前的缺失状态覆盖刚安装的端点。
     lock_voice_env_status_cache().store(Instant::now(), endpoints);
     let ready = endpoints.0 && endpoints.1;
-    let needs_reboot = exit_code == 3010 || exit_code == 1641 || !ready;
+    let needs_reboot =
+        exit_code == 3010 || exit_code == 1641 || exit_code == HELPER_ALREADY_INSTALLED || !ready;
 
     let mic_message = if ready {
         match run_configure_script("EnsureMic", &zip) {
@@ -752,7 +1061,18 @@ fn run_official_setup_installer() -> Result<VoiceEnvActionResult, String> {
     } else {
         String::new()
     };
-    let message = if exit_code == 3010 || exit_code == 1641 {
+    let message = if exit_code == HELPER_ALREADY_INSTALLED && ready {
+        format!("VB-CABLE 已安装且端点已就绪，已尝试将默认麦克风设为 CABLE Output。{mic_message}")
+    } else if exit_code == HELPER_ALREADY_INSTALLED {
+        "官方安装器显示 VB-CABLE 已安装，因此没有执行卸载或覆盖安装。请先重启 Windows；重启后重新打开 Nexus Prime 再点击「自动修复」。".into()
+    } else if exit_code == HELPER_INSTALLER_ERROR {
+        "VB-CABLE 官方安装器报告安装失败；已自动关闭结果窗口，未执行卸载。请查看应用日志后重试。"
+            .into()
+    } else if exit_code == HELPER_UI_TIMEOUT {
+        "未能在 45 秒内识别 VB-CABLE 官方安装按钮，自动安装已安全停止，未执行卸载。".into()
+    } else if exit_code == HELPER_LAUNCH_FAILED {
+        "VB-CABLE 管理员安装助手未能启动已校验的官方安装器。".into()
+    } else if exit_code == 3010 || exit_code == 1641 {
         format!(
             "VB-CABLE 官方安装器已完成（退出码 {exit_code}），请先重启 Windows；重启后重新打开 Nexus Prime 并点击「自动修复」。{mic_message}"
         )
@@ -764,7 +1084,7 @@ fn run_official_setup_installer() -> Result<VoiceEnvActionResult, String> {
         "VB-CABLE 官方安装器已关闭，但 10 秒内未检测到 CABLE Input/Output。请重启 Windows 后重新打开 Nexus Prime 并点击「自动修复」。".into()
     };
     Ok(VoiceEnvActionResult {
-        ok: exit_code == 0 && ready,
+        ok: (exit_code == 0 || exit_code == HELPER_ALREADY_INSTALLED) && ready,
         ready,
         needs_choice: false,
         needs_reboot,
@@ -932,6 +1252,82 @@ mod tests {
     }
 
     #[test]
+    fn official_setup_hashes_are_pinned_by_exact_file_name() {
+        assert_eq!(
+            expected_official_setup_hash(Path::new("VBCABLE_Setup_x64.exe")),
+            Some(OFFICIAL_SETUP_X64_SHA256)
+        );
+        assert_eq!(
+            expected_official_setup_hash(Path::new("vbcable_setup.EXE")),
+            Some(OFFICIAL_SETUP_X86_SHA256)
+        );
+        assert_eq!(expected_official_setup_hash(Path::new("setup.exe")), None);
+    }
+
+    #[test]
+    fn installer_automation_clicks_install_but_never_remove() {
+        let install = InstallerUiFacts {
+            has_install_button: true,
+            has_remove_button: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            installer_ui_action(&install, false, Duration::from_secs(1)),
+            InstallerUiAction::ClickInstall
+        );
+
+        let remove_only = InstallerUiFacts {
+            has_remove_button: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            installer_ui_action(&remove_only, false, Duration::from_secs(1)),
+            InstallerUiAction::Wait
+        );
+        assert_eq!(
+            installer_ui_action(&remove_only, false, Duration::from_secs(2)),
+            InstallerUiAction::AlreadyInstalled
+        );
+    }
+
+    #[test]
+    fn installer_automation_confirms_only_a_reported_result() {
+        let success = InstallerUiFacts {
+            has_ok_button: true,
+            reports_success: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            installer_ui_action(&success, true, Duration::from_secs(5)),
+            InstallerUiAction::ConfirmSuccess
+        );
+
+        let generic_ok = InstallerUiFacts {
+            has_ok_button: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            installer_ui_action(&generic_ok, true, Duration::from_secs(5)),
+            InstallerUiAction::Wait
+        );
+        assert_eq!(
+            installer_ui_action(&generic_ok, true, Duration::from_secs(60)),
+            InstallerUiAction::Wait
+        );
+
+        let error = InstallerUiFacts {
+            has_ok_button: true,
+            reports_success: true,
+            reports_error: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            installer_ui_action(&error, true, Duration::from_secs(5)),
+            InstallerUiAction::ConfirmError
+        );
+    }
+
+    #[test]
     fn installer_exit_codes_keep_reboot_and_failure_distinct() {
         assert_eq!(installer_result_code(0, true), "voice_env.ready");
         assert_eq!(installer_result_code(0, false), "voice_env.incomplete");
@@ -946,6 +1342,14 @@ mod tests {
         assert_eq!(
             installer_result_code(1, false),
             "voice_env.installer_failed"
+        );
+        assert_eq!(
+            installer_result_code(HELPER_ALREADY_INSTALLED, false),
+            "voice_env.already_installed_reboot_required"
+        );
+        assert_eq!(
+            installer_result_code(HELPER_UI_TIMEOUT, false),
+            "voice_env.installer_automation_timeout"
         );
     }
 

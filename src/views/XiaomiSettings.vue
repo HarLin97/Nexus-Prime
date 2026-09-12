@@ -953,7 +953,7 @@ interface VoiceEnvActionResult {
 function openVoiceRepairChoice() {
   if (repairBusy.value) return;
   voiceRepairTab.value = "repair";
-  voiceChoiceMsg.value = "自动修复会打开 VB-Audio 官方安装界面，并可能显示 Windows 管理员确认（UAC）。";
+  voiceChoiceMsg.value = "确认一次 Windows 管理员权限（UAC）后，应用会自动点击并完成 VB-Audio 官方安装器，无需再次手动操作。";
   showVoiceChoice.value = true;
 }
 
@@ -975,7 +975,7 @@ async function chooseVoiceSource(source: "embedded" | "download_page") {
     if (result.needsReboot || !result.ok) {
       voiceChoiceMsg.value = result.needsReboot
         ? `${result.message} 下一步：重启 Windows，重新打开 Nexus Prime 后点击“自动修复”。`
-        : `${result.message} 可检查官方安装器提示后再次尝试。`;
+        : `${result.message} 可查看应用日志后再次尝试。`;
       voiceRepairTab.value = "repair";
       showVoiceChoice.value = true;
     }
@@ -983,7 +983,7 @@ async function chooseVoiceSource(source: "embedded" | "download_page") {
     const msg = `语音修复失败: ${e}`;
     prependLog(msg);
     host.value = { ...host.value, detail: msg, tone: "error" };
-    voiceChoiceMsg.value = `${msg}。可检查 UAC 或关闭的官方安装器后重试。`;
+    voiceChoiceMsg.value = `${msg}。请确认 UAC 后重试；其余安装器步骤会自动完成。`;
     voiceRepairTab.value = "repair";
     showVoiceChoice.value = true;
   } finally {
@@ -1688,16 +1688,16 @@ watch(
           <section v-if="voiceRepairTab === 'repair'" class="voice-repair-panel" role="tabpanel">
             <div class="voice-repair-copy">
               <span class="voice-repair-eyebrow">VB-Audio Pack45 · 官方安装器</span>
-              <h4>先打开官方安装界面，再自动完成检测</h4>
+              <h4>一次确认，全自动安装与检测</h4>
               <p>{{ voiceChoiceMsg }}</p>
-              <p class="voice-repair-detail">应用会校验内置包、打开官方安装器并等待结束。检测到 CABLE Input 与 CABLE Output 后，才会尝试把默认麦克风设为 CABLE Output。</p>
+              <p class="voice-repair-detail">应用会校验内置包，自动点击官方安装器的安装与完成按钮。检测到 CABLE Input 与 CABLE Output 后，才会尝试把默认麦克风设为 CABLE Output；不会自动卸载已有驱动。</p>
             </div>
             <aside class="voice-repair-action voice-repair-callout">
               <span class="voice-repair-status">推荐</span>
               <strong>自动修复</strong>
-              <p>会显示 VB-Audio 官方安装界面及 Windows 管理员确认。</p>
+              <p>仅需确认 Windows UAC，之后无需再点安装器。</p>
               <button class="voice-repair-button voice-repair-button--primary" type="button" :disabled="voiceRepairing" @click="runVoiceAutoRepair">
-                <span>{{ voiceRepairing ? "正在等待官方安装器…" : "开始自动修复" }}</span>
+                <span>{{ voiceRepairing ? "正在自动安装与检测…" : "开始自动修复" }}</span>
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 4.5 5 5.5-5 5.5" /></svg>
               </button>
               <button class="voice-repair-button voice-repair-button--secondary" type="button" :disabled="voiceRepairing" @click="chooseVoiceSource('embedded')">使用内置官方驱动</button>
@@ -1711,10 +1711,10 @@ watch(
           <section v-else-if="voiceRepairTab === 'guide'" class="voice-repair-panel" role="tabpanel">
             <div class="voice-repair-copy">
               <span class="voice-repair-eyebrow">安装步骤</span>
-              <h4>在官方窗口中完成 VB-CABLE 安装</h4>
+              <h4>由应用自动完成 VB-CABLE 安装</h4>
               <ol>
                 <li>点击“开始自动修复”或“使用内置官方驱动”。</li>
-                <li>在 VB-Audio 官方安装窗口和 UAC 确认中继续。</li>
+                <li>在 Windows UAC 中选择“是”；官方安装器里的按钮由应用自动完成。</li>
                 <li>如 Windows 要求重启，重启后重新打开 Nexus Prime 再执行自动修复。</li>
               </ol>
             </div>
@@ -1729,7 +1729,7 @@ watch(
             <div class="voice-repair-copy">
               <span class="voice-repair-eyebrow">排查建议</span>
               <h4>遇到安装或输入问题时</h4>
-              <p><strong>安装器被取消：</strong>再次点击自动修复，并在 UAC 中选择“是”。</p>
+              <p><strong>管理员确认被取消：</strong>再次点击自动修复，并在 UAC 中选择“是”；后续无需手动点击。</p>
               <p><strong>安装后仍未识别：</strong>先重启 Windows；如仍无效，再移除重复的 VB-CABLE 设备后重新安装。</p>
             </div>
             <aside class="voice-repair-action voice-repair-callout">

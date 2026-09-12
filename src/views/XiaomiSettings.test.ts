@@ -145,6 +145,7 @@ describe("XiaomiSettings VB-CABLE repair dialog", () => {
 
     expect(wrapper.text()).toContain("虚拟声卡修复");
     expect(wrapper.text()).toContain("自动修复");
+    expect(wrapper.text()).toContain("之后无需再点安装器");
     expect(invoke).not.toHaveBeenCalledWith("repair_xiaomi_voice_env", expect.anything());
   });
 
@@ -169,7 +170,7 @@ describe("XiaomiSettings VB-CABLE repair dialog", () => {
     const wrapper = await mountView();
     await buttonByText(wrapper, "修复声卡").trigger("click");
     await buttonByText(wrapper, "安装说明").trigger("click");
-    expect(wrapper.text()).toContain("UAC 确认中继续");
+    expect(wrapper.text()).toContain("官方安装器里的按钮由应用自动完成");
     await buttonByText(wrapper, "常见问题").trigger("click");
     expect(wrapper.text()).toContain("监听 CABLE Output");
   });

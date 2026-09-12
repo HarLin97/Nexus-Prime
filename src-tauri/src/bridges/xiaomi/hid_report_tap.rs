@@ -72,6 +72,12 @@ struct HubMessage {
     raw: String,
     #[serde(default)]
     message: String,
+    #[serde(default)]
+    pending_io: Option<u64>,
+    #[serde(default)]
+    completed_io: Option<u64>,
+    #[serde(default)]
+    failed_io: Option<u64>,
 }
 
 fn tap_log(msg: &str) {
@@ -346,6 +352,7 @@ fn run_hub(app: AppHandle, gate_slot: Arc<Mutex<Arc<KeyEmitGate>>>, stop: Arc<At
         let mut buffer = Vec::new();
         let mut last_heartbeat = Instant::now();
         let mut io_announced = false;
+        let mut last_telemetry: Option<(Option<u64>, Option<u64>, Option<u64>)> = None;
         let mut tmp = [0u8; 65536];
 
         while !stop.load(Ordering::SeqCst) {
@@ -371,6 +378,17 @@ fn run_hub(app: AppHandle, gate_slot: Arc<Mutex<Arc<KeyEmitGate>>>, stop: Arc<At
                                 match msg.kind.as_str() {
                                     "heartbeat" | "ready" => {
                                         last_heartbeat = Instant::now();
+                                        let telemetry =
+                                            (msg.pending_io, msg.completed_io, msg.failed_io);
+                                        if telemetry != (None, None, None)
+                                            && last_telemetry != Some(telemetry)
+                                        {
+                                            tap_log(&format!(
+                                                "XIAOMI HID TAP telemetry pending={:?} completed={:?} failed={:?}",
+                                                msg.pending_io, msg.completed_io, msg.failed_io
+                                            ));
+                                            last_telemetry = Some(telemetry);
+                                        }
                                         if msg.kind == "ready" && !io_announced {
                                             emit_message(
                                                 &app,
